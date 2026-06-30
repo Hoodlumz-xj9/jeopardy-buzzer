@@ -14,7 +14,8 @@
       --gold:    #f5c518;
       --text:    #e8eaf0;
       --muted:   #7a8099;
-      --green:   #27ae60;
+      --red:     #c0392b;
+      --red-lt:  #e74c3c;
       --danger:  #e74c3c;
       --radius:  10px;
     }
@@ -129,13 +130,24 @@
       box-shadow: none;
       cursor: not-allowed;
     }
+    /* Red when this player is first buzzer — pulsing glow */
     #buzzBtn.first-buzz {
-      background: radial-gradient(circle at 35% 35%, #5af07a, var(--green) 60%);
-      animation: pulseGreen 1s ease-in-out infinite;
+      background: radial-gradient(circle at 35% 35%, #ff6b6b, var(--red) 60%);
+      color: #fff;
+      animation: pulseRed 1s ease-in-out infinite;
     }
-    @keyframes pulseGreen {
-      0%, 100% { box-shadow: 0 0 30px rgba(39,174,96,0.5); }
-      50%       { box-shadow: 0 0 60px rgba(39,174,96,0.8); }
+    @keyframes pulseRed {
+      0%, 100% { box-shadow: 0 0 30px rgba(192,57,43,0.5); }
+      50%       { box-shadow: 0 0 70px rgba(231,76,60,0.9); }
+    }
+
+    /* Red + disabled when this player buzzed but wasn't first */
+    #buzzBtn.buzzed {
+      background: radial-gradient(circle at 35% 35%, #ff6b6b, var(--red) 60%);
+      color: #fff;
+      opacity: 0.6;
+      cursor: not-allowed;
+      box-shadow: none;
     }
 
     .buzz-hint {
@@ -310,24 +322,28 @@
       document.getElementById('answerBanner').classList.remove('visible');
     }
 
-    // ── Buzz sound via Web Audio API ──────────────────────────────────────
-    // Creates a short descending "bzzzt" — no external files needed.
+    // ── Buzz sound — preload MP3, play via Web Audio API for volume boost ────
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let buzzBuffer = null;
+
+    fetch('/rightanswer.mp3')
+      .then(r => r.arrayBuffer())
+      .then(buf => audioCtx.decodeAudioData(buf))
+      .then(decoded => { buzzBuffer = decoded; })
+      .catch(() => {}); // silently skip if file missing
+
     function playBuzzSound() {
-      const ctx  = new (window.AudioContext || window.webkitAudioContext)();
-      const osc  = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.type      = 'sawtooth';
-      osc.frequency.setValueAtTime(440, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.35);
-
-      gain.gain.setValueAtTime(0.6, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.35);
+      if (!buzzBuffer) return;
+      // resume() needed because browsers suspend AudioContext until a user gesture
+      audioCtx.resume().then(() => {
+        const src  = audioCtx.createBufferSource();
+        const gain = audioCtx.createGain();
+        src.buffer      = buzzBuffer;
+        gain.gain.value = 1.5; // 50% louder than the file's native volume
+        src.connect(gain);
+        gain.connect(audioCtx.destination);
+        src.start(0);
+      });
     }
 
     // ── Buzz button ───────────────────────────────────────────────────────
@@ -368,16 +384,20 @@
       const iFirst = buzzOrder[0] === socket.id;
 
       if (iFirst) {
+        // This player was first — red + pulsing
         btn.classList.add('first-buzz');
-        btn.disabled = false; // keep it "lit" but not clickable again
+        btn.classList.remove('buzzed');
+        btn.disabled = false;
         btn.onclick  = null;
       } else if (iInBuzzOrder || answeringPlayer) {
+        // Buzzed but not first, or round is locked — red + dimmed
         btn.classList.remove('first-buzz');
+        btn.classList.add('buzzed');
         btn.disabled = true;
         btn.onclick  = null;
       } else {
-        // Reset — host cleared the buzzer
-        btn.classList.remove('first-buzz');
+        // Host reset — back to gold, ready to buzz again
+        btn.classList.remove('first-buzz', 'buzzed');
         btn.disabled = false;
         btn.onclick  = buzz;
         hasBuzzed    = false;
