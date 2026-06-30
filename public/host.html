@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Host — Jeopardy</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0a0c14;
+      --surface: #131829;
+      --blue:    #1a4fa0;
+      --blue-lt: #2563c9;
+      --gold:    #f5c518;
+      --text:    #e8eaf0;
+      --muted:   #7a8099;
+      --danger:  #e74c3c;
+      --green:   #27ae60;
+      --radius:  10px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      padding: 24px 16px 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    .top-bar {
+      width: 100%;
+      max-width: 640px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .logo { font-size: 1.5rem; font-weight: 900; color: var(--gold); letter-spacing: 2px; }
+    .host-tag {
+      font-size: 0.8rem;
+      background: var(--blue);
+      padding: 4px 12px;
+      border-radius: 20px;
+      color: #cce;
+    }
+
+    /* ── Room info card ─────────────────────────────────────────── */
+    .room-card {
+      width: 100%;
+      max-width: 640px;
+      background: var(--surface);
+      border: 1px solid #222840;
+      border-radius: var(--radius);
+      padding: 20px 24px;
+    }
+    .room-code-display {
+      font-size: 2.4rem;
+      font-weight: 900;
+      letter-spacing: 6px;
+      color: var(--gold);
+      text-align: center;
+      margin-bottom: 4px;
+    }
+    .room-label {
+      text-align: center;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .join-link-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #0a0c14;
+      border: 1px solid #2a3050;
+      border-radius: 6px;
+      padding: 8px 12px;
+    }
+    #joinLink {
+      flex: 1;
+      font-size: 0.85rem;
+      color: var(--muted);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .btn-copy {
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: filter 0.15s;
+    }
+    .btn-copy:hover { filter: brightness(1.2); }
+    .btn-copy.copied { background: var(--green); }
+
+    /* ── Section titles ─────────────────────────────────────────── */
+    .section {
+      width: 100%;
+      max-width: 640px;
+    }
+    .section-title {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 10px;
+      padding-left: 2px;
+    }
+
+    /* ── Scoreboard ─────────────────────────────────────────────── */
+    .scoreboard {
+      background: var(--surface);
+      border: 1px solid #222840;
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .score-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid #1a1e30;
+      transition: background 0.3s;
+    }
+    .score-row:last-child { border-bottom: none; }
+    .score-row.answering {
+      background: rgba(245,197,24,0.1);
+      border-left: 3px solid var(--gold);
+    }
+    .score-name { flex: 1; font-weight: 600; font-size: 0.95rem; }
+
+    /* Editable score field */
+    .score-input {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      color: var(--gold);
+      font-size: 1rem;
+      font-weight: 700;
+      width: 72px;
+      text-align: center;
+      padding: 3px 6px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .score-input:hover   { border-color: #2a3050; background: #0a0c14; }
+    .score-input:focus   { border-color: var(--blue-lt); background: #0a0c14; outline: none; cursor: text; }
+
+    .pts-label { font-size: 0.75rem; color: var(--muted); margin-left: -6px; }
+
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      padding: 7px 14px;
+      transition: filter 0.15s, transform 0.1s;
+    }
+    button:active { transform: scale(0.96); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-select { background: var(--blue); color: #fff; }
+    .btn-select:hover:not(:disabled) { filter: brightness(1.2); }
+    .btn-select.active { background: var(--gold); color: #0a0c14; }
+
+    .empty-msg { padding: 20px 16px; color: var(--muted); font-size: 0.9rem; text-align: center; }
+
+    /* ── Timer + reset row ──────────────────────────────────────── */
+    .control-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .btn-reset {
+      background: var(--danger);
+      color: #fff;
+      font-size: 0.95rem;
+      padding: 12px 24px;
+      border-radius: var(--radius);
+    }
+    .btn-reset:hover { filter: brightness(1.1); }
+
+    .timer-display {
+      background: var(--surface);
+      border: 1px solid #222840;
+      border-radius: var(--radius);
+      padding: 10px 24px;
+      text-align: center;
+      flex: 1;
+      min-width: 140px;
+    }
+    .timer-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+    #hostCountdown { font-size: 2rem; font-weight: 900; color: var(--text); }
+    #hostCountdown.urgent { color: var(--danger); }
+    #hostCountdown.idle   { color: var(--muted); }
+
+    /* ── Buzz order ─────────────────────────────────────────────── */
+    .buzz-order {
+      background: var(--surface);
+      border: 1px solid #222840;
+      border-radius: var(--radius);
+    }
+    .buzz-list { list-style: none; padding: 8px 0; }
+    .buzz-list li {
+      padding: 8px 16px;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid #1a1e30;
+    }
+    .buzz-list li:last-child { border-bottom: none; }
+    .buzz-rank {
+      background: var(--blue);
+      color: #fff;
+      font-size: 0.75rem;
+      font-weight: 700;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .buzz-rank.gold { background: var(--gold); color: #0a0c14; }
+    .buzz-empty { padding: 14px 16px; color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="top-bar">
+    <div class="logo">JEOPARDY!</div>
+    <div class="host-tag" id="hostBadge">Host</div>
+  </div>
+
+  <!-- Room code + join link -->
+  <div class="room-card">
+    <div class="room-code-display" id="displayCode"></div>
+    <div class="room-label">Room Code — share this with players</div>
+    <div class="join-link-row">
+      <span id="joinLink"></span>
+      <button class="btn-copy" id="copyBtn" onclick="copyLink()">Copy Link</button>
+    </div>
+  </div>
+
+  <!-- Controls: timer + reset -->
+  <div class="section">
+    <div class="section-title">Controls</div>
+    <div class="control-row">
+      <button class="btn-reset" onclick="resetBuzzer()">&#x21BA; Reset Buzzer</button>
+      <div class="timer-display">
+        <div class="timer-label">Timer</div>
+        <div id="hostCountdown" class="idle">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Buzz order -->
+  <div class="section">
+    <div class="section-title">Buzz Order</div>
+    <div class="buzz-order">
+      <div id="hostBuzzOrder"><div class="buzz-empty">No buzzes yet</div></div>
+    </div>
+  </div>
+
+  <!-- Scoreboard -->
+  <div class="section">
+    <div class="section-title">Players &amp; Scores</div>
+    <div class="scoreboard" id="hostScoreboard">
+      <div class="empty-msg">Waiting for players to join…</div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // ── Bootstrap from sessionStorage (set by index.html) ────────────────
+    const roomCode = location.pathname.split('/').pop().toUpperCase();
+    const hostName = sessionStorage.getItem('hostName') || 'Host';
+
+    document.getElementById('displayCode').textContent = roomCode;
+    document.getElementById('hostBadge').textContent   = hostName + ' (host)';
+
+    // Build join link using current origin
+    const joinUrl = location.origin + '/play/' + roomCode;
+    document.getElementById('joinLink').textContent = joinUrl;
+
+    // ── Copy link button ──────────────────────────────────────────────────
+    function copyLink() {
+      navigator.clipboard.writeText(joinUrl).then(() => {
+        const btn = document.getElementById('copyBtn');
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy Link'; btn.classList.remove('copied'); }, 2000);
+      });
+    }
+
+    // ── Socket connection ─────────────────────────────────────────────────
+    const socket = io();
+    let lastState = null; // cached for score edits
+
+    socket.on('connect', () => {
+      socket.emit('host_join', { roomCode });
+    });
+
+    socket.on('error', ({ message }) => {
+      alert('Host error: ' + message);
+      window.location.href = '/';
+    });
+
+    // ── Countdown timer (host-side) ───────────────────────────────────────
+    let timerInterval = null;
+
+    function startHostCountdown(endsAt) {
+      clearInterval(timerInterval);
+      const el = document.getElementById('hostCountdown');
+      el.classList.remove('idle', 'urgent');
+
+      timerInterval = setInterval(() => {
+        const remaining = Math.ceil((endsAt - Date.now()) / 1000);
+        if (remaining <= 0) {
+          clearInterval(timerInterval);
+          el.textContent = "Time's up!";
+          el.classList.add('urgent');
+          return;
+        }
+        el.textContent = remaining + 's';
+        if (remaining <= 10) el.classList.add('urgent');
+        else                  el.classList.remove('urgent');
+      }, 250);
+    }
+
+    function stopHostCountdown() {
+      clearInterval(timerInterval);
+      const el = document.getElementById('hostCountdown');
+      el.textContent = '—';
+      el.classList.remove('urgent');
+      el.classList.add('idle');
+    }
+
+    // ── Select a player to answer ─────────────────────────────────────────
+    function selectPlayer(socketId) {
+      socket.emit('host_select_player', { roomCode, socketId });
+    }
+
+    // ── Reset buzzer ──────────────────────────────────────────────────────
+    function resetBuzzer() {
+      socket.emit('host_reset_buzzer', { roomCode });
+    }
+
+    // ── Update a player's score ───────────────────────────────────────────
+    // Called when the score input loses focus or Enter is pressed.
+    function commitScore(socketId, inputEl) {
+      const raw      = inputEl.value.replace(/[^0-9\-]/g, '');
+      const newScore = parseInt(raw, 10);
+      if (isNaN(newScore)) {
+        // Revert to stored score if input is garbage
+        if (lastState?.players[socketId] !== undefined)
+          inputEl.value = lastState.players[socketId].score;
+        return;
+      }
+      socket.emit('host_update_score', { roomCode, socketId, newScore });
+      inputEl.blur();
+    }
+
+    // ── Room state update ─────────────────────────────────────────────────
+    socket.on('room_state', (state) => {
+      lastState = state;
+      const { players, buzzOrder, answeringPlayer, timerEndsAt } = state;
+
+      renderScoreboard(players, buzzOrder, answeringPlayer);
+      renderBuzzOrder(buzzOrder, players);
+
+      if (answeringPlayer && timerEndsAt) {
+        startHostCountdown(timerEndsAt);
+      } else {
+        stopHostCountdown();
+      }
+    });
+
+    // ── Render scoreboard ─────────────────────────────────────────────────
+    function renderScoreboard(players, buzzOrder, answeringPlayer) {
+      const el      = document.getElementById('hostScoreboard');
+      const entries = Object.entries(players);
+
+      if (entries.length === 0) {
+        el.innerHTML = '<div class="empty-msg">Waiting for players to join…</div>';
+        return;
+      }
+
+      // Sort by score descending so host sees the leader at top
+      entries.sort((a, b) => b[1].score - a[1].score);
+
+      el.innerHTML = entries.map(([id, p]) => {
+        const isAnswering = id === answeringPlayer;
+        const rowCls = 'score-row' + (isAnswering ? ' answering' : '');
+        const selectCls = 'btn-select' + (isAnswering ? ' active' : '');
+        const selectLabel = isAnswering ? '★ Answering' : 'Select';
+
+        return `<div class="${rowCls}" data-id="${esc(id)}">
+          <span class="score-name">${esc(p.name)}</span>
+          <input
+            class="score-input"
+            type="number"
+            value="${p.score}"
+            title="Click to edit score"
+            onkeydown="if(event.key==='Enter') commitScore('${esc(id)}', this)"
+            onblur="commitScore('${esc(id)}', this)"
+          />
+          <span class="pts-label">pts</span>
+          <button class="${selectCls}" onclick="selectPlayer('${esc(id)}')">${selectLabel}</button>
+        </div>`;
+      }).join('');
+    }
+
+    // ── Render buzz order ─────────────────────────────────────────────────
+    function renderBuzzOrder(buzzOrder, players) {
+      const el       = document.getElementById('hostBuzzOrder');
+      const ordinals = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
+
+      if (buzzOrder.length === 0) {
+        el.innerHTML = '<div class="buzz-empty">No buzzes yet</div>';
+        return;
+      }
+
+      el.innerHTML = '<ul class="buzz-list">' +
+        buzzOrder.map((id, i) => {
+          const name    = players[id]?.name || 'Unknown';
+          const rankCls = i === 0 ? 'buzz-rank gold' : 'buzz-rank';
+          return `<li>
+            <span class="${rankCls}">${i + 1}</span>
+            <strong>${ordinals[i] || (i + 1) + 'th'}:</strong> ${esc(name)}
+          </li>`;
+        }).join('') + '</ul>';
+    }
+
+    // ── HTML escape ───────────────────────────────────────────────────────
+    function esc(str) {
+      return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

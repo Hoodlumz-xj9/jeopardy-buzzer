@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jeopardy Buzzer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0a0c14;
+      --surface:  #131829;
+      --blue:     #1a4fa0;
+      --blue-lt:  #2563c9;
+      --gold:     #f5c518;
+      --gold-dk:  #c9a010;
+      --text:     #e8eaf0;
+      --muted:    #7a8099;
+      --danger:   #e74c3c;
+      --radius:   10px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .logo {
+      font-size: 2.4rem;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: var(--gold);
+      text-shadow: 0 0 20px rgba(245,197,24,0.4);
+      margin-bottom: 6px;
+    }
+    .tagline {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 48px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid #222840;
+      border-radius: var(--radius);
+      padding: 32px;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 0;
+    }
+
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 14px 24px;
+      transition: filter 0.15s, transform 0.1s;
+    }
+    button:active { transform: scale(0.97); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-primary {
+      background: var(--gold);
+      color: #0a0c14;
+      flex: 1;
+    }
+    .btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
+
+    .btn-secondary {
+      background: var(--blue);
+      color: #fff;
+      flex: 1;
+    }
+    .btn-secondary:hover:not(:disabled) { filter: brightness(1.2); }
+
+    .btn-danger {
+      background: var(--danger);
+      color: #fff;
+    }
+    .btn-danger:hover:not(:disabled) { filter: brightness(1.1); }
+
+    /* Modal overlay */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid #2a3050;
+      border-radius: var(--radius);
+      padding: 32px;
+      width: 100%;
+      max-width: 400px;
+    }
+    .modal h2 {
+      font-size: 1.3rem;
+      color: var(--gold);
+      margin-bottom: 24px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+      margin-top: 16px;
+    }
+    label:first-of-type { margin-top: 0; }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      background: #0a0c14;
+      border: 1px solid #2a3050;
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 1rem;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus { border-color: var(--blue-lt); }
+
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .error-banner {
+      background: rgba(231,76,60,0.15);
+      border: 1px solid var(--danger);
+      color: #f5a5a5;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      margin-top: 16px;
+      display: none;
+    }
+    .error-banner.visible { display: block; }
+
+    /* Page-level error (from redirect) */
+    .page-error {
+      background: rgba(231,76,60,0.15);
+      border: 1px solid var(--danger);
+      color: #f5a5a5;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      margin-bottom: 20px;
+      text-align: center;
+      display: none;
+      width: 100%;
+      max-width: 420px;
+    }
+    .page-error.visible { display: block; }
+  </style>
+</head>
+<body>
+
+  <div class="logo">JEOPARDY!</div>
+  <div class="tagline">Buzzer System</div>
+
+  <div id="pageError" class="page-error"></div>
+
+  <div class="card">
+    <div class="btn-row">
+      <button class="btn-primary" onclick="openModal('create')">Create Game</button>
+      <button class="btn-secondary" onclick="openModal('join')">Join Game</button>
+    </div>
+  </div>
+
+  <!-- ── Create Game modal ──────────────────────────────────────── -->
+  <div id="createModal" class="modal-overlay">
+    <div class="modal">
+      <h2>Create a Game</h2>
+      <label for="hostName">Your name (host)</label>
+      <input id="hostName" type="text" placeholder="e.g. Zachary" maxlength="30" />
+
+      <label for="roomPass">Room password</label>
+      <input id="roomPass" type="text" placeholder="share with players" maxlength="30" />
+
+      <div id="createError" class="error-banner"></div>
+
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeModal('create')">Cancel</button>
+        <button class="btn-primary" onclick="createRoom()">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Join Game modal ────────────────────────────────────────── -->
+  <div id="joinModal" class="modal-overlay">
+    <div class="modal">
+      <h2>Join a Game</h2>
+      <label for="joinCode">Room code</label>
+      <input id="joinCode" type="text" placeholder="e.g. K7XMQP" maxlength="6"
+             oninput="this.value=this.value.toUpperCase()" />
+
+      <label for="joinPass">Password</label>
+      <input id="joinPass" type="text" placeholder="ask the host" maxlength="30" />
+
+      <label for="playerName">Your name</label>
+      <input id="playerName" type="text" placeholder="e.g. Alice" maxlength="30" />
+
+      <div id="joinError" class="error-banner"></div>
+
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeModal('join')">Cancel</button>
+        <button class="btn-primary" onclick="joinRoom()">Join</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Show redirect error if present in URL ─────────────────────────────
+    const params = new URLSearchParams(location.search);
+    if (params.get('error')) {
+      const el = document.getElementById('pageError');
+      const msgs = {
+        room_not_found: 'That room no longer exists — the host may have closed it.',
+      };
+      el.textContent = msgs[params.get('error')] || 'Something went wrong. Please try again.';
+      el.classList.add('visible');
+    }
+
+    // ── Modal helpers ─────────────────────────────────────────────────────
+    function openModal(type) {
+      document.getElementById(type + 'Modal').classList.add('open');
+      // Focus first input
+      const first = document.querySelector('#' + type + 'Modal input');
+      if (first) setTimeout(() => first.focus(), 50);
+    }
+    function closeModal(type) {
+      document.getElementById(type + 'Modal').classList.remove('open');
+    }
+
+    // Close modal on backdrop click
+    document.querySelectorAll('.modal-overlay').forEach(el => {
+      el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+    });
+
+    // Submit on Enter
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      if (document.getElementById('createModal').classList.contains('open')) createRoom();
+      if (document.getElementById('joinModal').classList.contains('open'))  joinRoom();
+    });
+
+    function showError(id, msg) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      el.classList.add('visible');
+    }
+    function clearError(id) {
+      document.getElementById(id).classList.remove('visible');
+    }
+
+    // ── Create Room ───────────────────────────────────────────────────────
+    async function createRoom() {
+      clearError('createError');
+      const hostName = document.getElementById('hostName').value.trim();
+      const password = document.getElementById('roomPass').value.trim();
+
+      if (!hostName) return showError('createError', 'Please enter your name.');
+      if (!password) return showError('createError', 'Please enter a room password.');
+
+      try {
+        const res  = await fetch('/create-room', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ hostName, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) return showError('createError', data.error || 'Failed to create room.');
+
+        // Persist host info for the host page to read
+        sessionStorage.setItem('hostName',  hostName);
+        sessionStorage.setItem('roomCode',  data.roomCode);
+        sessionStorage.setItem('roomPass',  password);
+
+        window.location.href = '/host/' + data.roomCode;
+      } catch (err) {
+        showError('createError', 'Network error — please try again.');
+      }
+    }
+
+    // ── Join Room ─────────────────────────────────────────────────────────
+    async function joinRoom() {
+      clearError('joinError');
+      const roomCode   = document.getElementById('joinCode').value.trim().toUpperCase();
+      const password   = document.getElementById('joinPass').value.trim();
+      const playerName = document.getElementById('playerName').value.trim();
+
+      if (!roomCode)   return showError('joinError', 'Please enter the room code.');
+      if (!password)   return showError('joinError', 'Please enter the password.');
+      if (!playerName) return showError('joinError', 'Please enter your name.');
+
+      try {
+        // Validate password before redirecting
+        const res  = await fetch('/validate-join', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ roomCode, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) return showError('joinError', data.error || 'Could not join room.');
+
+        // Store credentials so play.html can connect via socket
+        sessionStorage.setItem('roomCode',   roomCode);
+        sessionStorage.setItem('roomPass',   password);
+        sessionStorage.setItem('playerName', playerName);
+
+        window.location.href = '/play/' + roomCode;
+      } catch (err) {
+        showError('joinError', 'Network error — please try again.');
+      }
+    }
+  </script>
+</body>
+</html>

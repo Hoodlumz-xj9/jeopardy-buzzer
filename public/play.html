@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Buzzer — Jeopardy</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0a0c14;
+      --surface: #131829;
+      --blue:    #1a4fa0;
+      --gold:    #f5c518;
+      --text:    #e8eaf0;
+      --muted:   #7a8099;
+      --green:   #27ae60;
+      --danger:  #e74c3c;
+      --radius:  10px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100dvh;         /* dvh handles mobile browser chrome */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 16px 32px;
+      gap: 20px;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    header {
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .room-code {
+      font-size: 0.8rem;
+      color: var(--muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .room-code span {
+      color: var(--gold);
+      font-weight: 700;
+      font-size: 1rem;
+    }
+    .player-badge {
+      font-size: 0.85rem;
+      background: var(--blue);
+      padding: 4px 12px;
+      border-radius: 20px;
+    }
+
+    /* ── Scoreboard ─────────────────────────────────────────────── */
+    .scoreboard {
+      width: 100%;
+      max-width: 480px;
+      background: var(--surface);
+      border: 1px solid #222840;
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .scoreboard-title {
+      background: var(--blue);
+      padding: 8px 16px;
+      font-size: 0.8rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #cce;
+    }
+    .score-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 16px;
+      border-bottom: 1px solid #1a1e30;
+      font-size: 0.95rem;
+      transition: background 0.3s;
+    }
+    .score-row:last-child { border-bottom: none; }
+    .score-row.me { background: rgba(26, 79, 160, 0.25); }
+    .score-row.answering {
+      background: rgba(245, 197, 24, 0.12);
+      border-left: 3px solid var(--gold);
+    }
+    .score-name { font-weight: 600; }
+    .score-pts  { color: var(--gold); font-weight: 700; }
+    .empty-msg  { padding: 16px; color: var(--muted); font-size: 0.9rem; text-align: center; }
+
+    /* ── Buzz button ────────────────────────────────────────────── */
+    .buzz-section {
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #buzzBtn {
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #f5d860, var(--gold) 60%, var(--gold) 100%);
+      color: #0a0c14;
+      font-size: 2rem;
+      font-weight: 900;
+      letter-spacing: 3px;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 0 40px rgba(245,197,24,0.35), 0 8px 30px rgba(0,0,0,0.5);
+      transition: transform 0.12s, box-shadow 0.12s, filter 0.12s;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #buzzBtn:active:not(:disabled) {
+      transform: scale(0.93);
+      box-shadow: 0 0 20px rgba(245,197,24,0.2), 0 4px 15px rgba(0,0,0,0.4);
+    }
+    #buzzBtn:disabled {
+      background: radial-gradient(circle at 35% 35%, #555, #333);
+      color: #888;
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+    #buzzBtn.first-buzz {
+      background: radial-gradient(circle at 35% 35%, #5af07a, var(--green) 60%);
+      animation: pulseGreen 1s ease-in-out infinite;
+    }
+    @keyframes pulseGreen {
+      0%, 100% { box-shadow: 0 0 30px rgba(39,174,96,0.5); }
+      50%       { box-shadow: 0 0 60px rgba(39,174,96,0.8); }
+    }
+
+    .buzz-hint {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    /* ── Buzz order list ────────────────────────────────────────── */
+    .buzz-order {
+      width: 100%;
+      max-width: 480px;
+      background: var(--surface);
+      border: 1px solid #222840;
+      border-radius: var(--radius);
+    }
+    .buzz-order-title {
+      background: #1a1e30;
+      padding: 8px 16px;
+      font-size: 0.8rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .buzz-list {
+      list-style: none;
+      padding: 8px 0;
+    }
+    .buzz-list li {
+      padding: 7px 16px;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .buzz-rank {
+      background: var(--blue);
+      color: #fff;
+      font-size: 0.75rem;
+      font-weight: 700;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .buzz-rank.gold { background: var(--gold); color: #0a0c14; }
+    .buzz-empty { padding: 12px 16px; color: var(--muted); font-size: 0.9rem; }
+
+    /* ── Answering highlight (this player is selected) ──────────── */
+    #answerBanner {
+      display: none;
+      width: 100%;
+      max-width: 480px;
+      border: 2px solid var(--gold);
+      border-radius: var(--radius);
+      background: rgba(245,197,24,0.08);
+      padding: 20px;
+      text-align: center;
+      animation: pulseBorder 1.2s ease-in-out infinite;
+    }
+    #answerBanner.visible { display: block; }
+    @keyframes pulseBorder {
+      0%, 100% { border-color: var(--gold); box-shadow: 0 0 10px rgba(245,197,24,0.3); }
+      50%       { border-color: #fff8c0;    box-shadow: 0 0 30px rgba(245,197,24,0.6); }
+    }
+    .answer-label {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--gold);
+      margin-bottom: 8px;
+    }
+    #countdown {
+      font-size: 3.5rem;
+      font-weight: 900;
+      color: var(--text);
+      line-height: 1;
+    }
+    #countdown.urgent { color: var(--danger); animation: shake 0.3s ease-in-out infinite; }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25%       { transform: translateX(-3px); }
+      75%       { transform: translateX(3px); }
+    }
+    .timesup { font-size: 1.4rem; font-weight: 700; color: var(--danger); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="room-code">Room&nbsp;<span id="headerCode"></span></div>
+    <div class="player-badge" id="playerBadge"></div>
+  </header>
+
+  <!-- Answering banner (shown only when this player is selected) -->
+  <div id="answerBanner">
+    <div class="answer-label">Your turn to answer!</div>
+    <div id="countdown">60</div>
+  </div>
+
+  <!-- Scoreboard -->
+  <div class="scoreboard">
+    <div class="scoreboard-title">Scoreboard</div>
+    <div id="scoreList"><div class="empty-msg">Waiting for players…</div></div>
+  </div>
+
+  <!-- Buzz button -->
+  <div class="buzz-section">
+    <button id="buzzBtn" onclick="buzz()">BUZZ</button>
+    <div class="buzz-hint">or press <strong>Space</strong></div>
+  </div>
+
+  <!-- Buzz order -->
+  <div class="buzz-order">
+    <div class="buzz-order-title">Buzz Order</div>
+    <div id="buzzOrderList"><div class="buzz-empty">No buzzes yet</div></div>
+  </div>
+
+  <!-- Socket.io client (served automatically by socket.io) -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // ── Read credentials stored by index.html ─────────────────────────────
+    const roomCode   = location.pathname.split('/').pop().toUpperCase();
+    const password   = sessionStorage.getItem('roomPass')   || '';
+    const playerName = sessionStorage.getItem('playerName') || '';
+
+    document.getElementById('headerCode').textContent  = roomCode;
+    document.getElementById('playerBadge').textContent = playerName || 'Player';
+
+    // ── Connect to socket server ──────────────────────────────────────────
+    const socket = io();
+
+    socket.on('connect', () => {
+      // Introduce ourselves to the server
+      socket.emit('join_room', { roomCode, playerName, password });
+    });
+
+    socket.on('error', ({ message }) => {
+      // Redirect home with the message — simplest UX for a wrong password / gone room
+      alert('Could not join: ' + message);
+      window.location.href = '/?error=room_not_found';
+    });
+
+    // ── Countdown timer ───────────────────────────────────────────────────
+    let timerInterval = null;
+
+    function startCountdown(endsAt) {
+      clearInterval(timerInterval);
+      const banner = document.getElementById('answerBanner');
+      const display = document.getElementById('countdown');
+
+      banner.classList.add('visible');
+      display.classList.remove('urgent');
+      display.className = ''; // clear timesup class
+
+      timerInterval = setInterval(() => {
+        const remaining = Math.ceil((endsAt - Date.now()) / 1000);
+        if (remaining <= 0) {
+          clearInterval(timerInterval);
+          display.innerHTML = '<span class="timesup">Time\'s up!</span>';
+          return;
+        }
+        display.textContent = remaining;
+        if (remaining <= 10) display.classList.add('urgent');
+      }, 250); // 250 ms gives smooth updates without drift
+    }
+
+    function stopCountdown() {
+      clearInterval(timerInterval);
+      document.getElementById('answerBanner').classList.remove('visible');
+    }
+
+    // ── Buzz sound via Web Audio API ──────────────────────────────────────
+    // Creates a short descending "bzzzt" — no external files needed.
+    function playBuzzSound() {
+      const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.type      = 'sawtooth';
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.35);
+
+      gain.gain.setValueAtTime(0.6, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.35);
+    }
+
+    // ── Buzz button ───────────────────────────────────────────────────────
+    let hasBuzzed = false;
+
+    function buzz() {
+      if (hasBuzzed) return;
+      hasBuzzed = true;
+      playBuzzSound();
+      socket.emit('buzz', { roomCode });
+    }
+
+    // Also trigger buzz on spacebar
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Space' && e.target === document.body) {
+        e.preventDefault();
+        buzz();
+      }
+    });
+
+    // ── Room state update ─────────────────────────────────────────────────
+    socket.on('room_state', ({ players, buzzOrder, answeringPlayer, timerEndsAt }) => {
+      renderScoreboard(players, answeringPlayer);
+      renderBuzzOrder(buzzOrder, players);
+
+      const btn = document.getElementById('buzzBtn');
+      const iAnswering = answeringPlayer === socket.id;
+
+      // Show/hide the answering banner
+      if (iAnswering && timerEndsAt) {
+        startCountdown(timerEndsAt);
+      } else {
+        stopCountdown();
+      }
+
+      // Disable button if we buzzed, or someone else is answering
+      const iInBuzzOrder = buzzOrder.includes(socket.id);
+      const iFirst = buzzOrder[0] === socket.id;
+
+      if (iFirst) {
+        btn.classList.add('first-buzz');
+        btn.disabled = false; // keep it "lit" but not clickable again
+        btn.onclick  = null;
+      } else if (iInBuzzOrder || answeringPlayer) {
+        btn.classList.remove('first-buzz');
+        btn.disabled = true;
+        btn.onclick  = null;
+      } else {
+        // Reset — host cleared the buzzer
+        btn.classList.remove('first-buzz');
+        btn.disabled = false;
+        btn.onclick  = buzz;
+        hasBuzzed    = false;
+      }
+    });
+
+    // ── Render helpers ────────────────────────────────────────────────────
+
+    function renderScoreboard(players, answeringPlayer) {
+      const el = document.getElementById('scoreList');
+      const entries = Object.entries(players);
+      if (entries.length === 0) {
+        el.innerHTML = '<div class="empty-msg">No players yet</div>';
+        return;
+      }
+
+      // Sort by score descending
+      entries.sort((a, b) => b[1].score - a[1].score);
+
+      el.innerHTML = entries.map(([id, p]) => {
+        const isMe        = id === socket.id;
+        const isAnswering = id === answeringPlayer;
+        let cls = 'score-row';
+        if (isMe)        cls += ' me';
+        if (isAnswering) cls += ' answering';
+        const tag = isMe ? ' <em style="font-size:0.75rem;color:var(--muted)">(you)</em>' : '';
+        return `<div class="${cls}">
+          <span class="score-name">${esc(p.name)}${tag}</span>
+          <span class="score-pts">${p.score} pts</span>
+        </div>`;
+      }).join('');
+    }
+
+    function renderBuzzOrder(buzzOrder, players) {
+      const el = document.getElementById('buzzOrderList');
+      if (buzzOrder.length === 0) {
+        el.innerHTML = '<div class="buzz-empty">No buzzes yet</div>';
+        return;
+      }
+      const ordinals = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
+      el.innerHTML = '<ul class="buzz-list">' +
+        buzzOrder.map((id, i) => {
+          const name = players[id]?.name || 'Unknown';
+          const rankCls = i === 0 ? 'buzz-rank gold' : 'buzz-rank';
+          return `<li>
+            <span class="${rankCls}">${i + 1}</span>
+            ${ordinals[i] || (i + 1) + 'th'}: ${esc(name)}${id === socket.id ? ' <em style="color:var(--muted);font-size:0.8rem">(you)</em>' : ''}
+          </li>`;
+        }).join('') + '</ul>';
+    }
+
+    // Simple HTML-escape to avoid XSS from player-supplied names
+    function esc(str) {
+      return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>
