@@ -305,16 +305,18 @@
       display.classList.remove('urgent');
       display.className = ''; // clear timesup class
 
+      let timesUpPlayed = false;
       timerInterval = setInterval(() => {
         const remaining = Math.ceil((endsAt - Date.now()) / 1000);
         if (remaining <= 0) {
           clearInterval(timerInterval);
           display.innerHTML = '<span class="timesup">Time\'s up!</span>';
+          if (!timesUpPlayed) { timesUpPlayed = true; playTimesUpSound(); }
           return;
         }
         display.textContent = remaining;
         if (remaining <= 10) display.classList.add('urgent');
-      }, 250); // 250 ms gives smooth updates without drift
+      }, 250);
     }
 
     function stopCountdown() {
@@ -322,29 +324,32 @@
       document.getElementById('answerBanner').classList.remove('visible');
     }
 
-    // ── Buzz sound — preload MP3, play via Web Audio API for volume boost ────
+    // ── Audio — preload both sounds via Web Audio API ────────────────────────
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    let buzzBuffer = null;
+    let buzzBuffer   = null;
+    let timesUpBuffer = null;
 
-    fetch('/rightanswer.mp3')
-      .then(r => r.arrayBuffer())
-      .then(buf => audioCtx.decodeAudioData(buf))
-      .then(decoded => { buzzBuffer = decoded; })
-      .catch(() => {}); // silently skip if file missing
+    function loadSound(url) {
+      return fetch(url).then(r => r.arrayBuffer()).then(buf => audioCtx.decodeAudioData(buf)).catch(() => null);
+    }
+    loadSound('/rightanswer.mp3').then(b => { buzzBuffer    = b; });
+    loadSound('/times-up.mp3').then(b =>   { timesUpBuffer = b; });
 
-    function playBuzzSound() {
-      if (!buzzBuffer) return;
-      // resume() needed because browsers suspend AudioContext until a user gesture
+    function playSound(buffer, volume = 1.5) {
+      if (!buffer) return;
       audioCtx.resume().then(() => {
         const src  = audioCtx.createBufferSource();
         const gain = audioCtx.createGain();
-        src.buffer      = buzzBuffer;
-        gain.gain.value = 1.5; // 50% louder than the file's native volume
+        src.buffer      = buffer;
+        gain.gain.value = volume;
         src.connect(gain);
         gain.connect(audioCtx.destination);
         src.start(0);
       });
     }
+
+    function playBuzzSound()   { playSound(buzzBuffer); }
+    function playTimesUpSound() { playSound(timesUpBuffer); }
 
     // ── Buzz button ───────────────────────────────────────────────────────
     let hasBuzzed = false;

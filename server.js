@@ -154,6 +154,17 @@ io.on('connection', (socket) => {
     broadcastState(roomCode);
   });
 
+  // ── Host unselects the current answering player (keeps buzz order intact) ──
+  socket.on('host_unselect_player', ({ roomCode }) => {
+    roomCode = roomCode?.toUpperCase();
+    const room = rooms[roomCode];
+    if (!room) return;
+
+    room.answeringPlayer = null;
+    room.timerEndsAt     = null;
+    broadcastState(roomCode);
+  });
+
   // ── Host resets the buzzer ───────────────────────────────────────────────
   socket.on('host_reset_buzzer', ({ roomCode }) => {
     roomCode = roomCode?.toUpperCase();

@@ -177,7 +177,9 @@
 
     .btn-select { background: var(--blue); color: #fff; }
     .btn-select:hover:not(:disabled) { filter: brightness(1.2); }
-    .btn-select.active { background: var(--gold); color: #0a0c14; }
+
+    .btn-unselect { background: #e67e22; color: #fff; }
+    .btn-unselect:hover:not(:disabled) { filter: brightness(1.15); }
 
     .empty-msg { padding: 20px 16px; color: var(--muted); font-size: 0.9rem; text-align: center; }
 
@@ -314,6 +316,27 @@
       });
     }
 
+    // ── Times-up sound ────────────────────────────────────────────────────
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let timesUpBuffer = null;
+    fetch('/times-up.mp3').then(r => r.arrayBuffer())
+      .then(buf => audioCtx.decodeAudioData(buf))
+      .then(decoded => { timesUpBuffer = decoded; })
+      .catch(() => {});
+
+    function playTimesUpSound() {
+      if (!timesUpBuffer) return;
+      audioCtx.resume().then(() => {
+        const src  = audioCtx.createBufferSource();
+        const gain = audioCtx.createGain();
+        src.buffer      = timesUpBuffer;
+        gain.gain.value = 1.5;
+        src.connect(gain);
+        gain.connect(audioCtx.destination);
+        src.start(0);
+      });
+    }
+
     // ── Socket connection ─────────────────────────────────────────────────
     const socket = io();
     let lastState = null; // cached for score edits
@@ -335,12 +358,14 @@
       const el = document.getElementById('hostCountdown');
       el.classList.remove('idle', 'urgent');
 
+      let timesUpPlayed = false;
       timerInterval = setInterval(() => {
         const remaining = Math.ceil((endsAt - Date.now()) / 1000);
         if (remaining <= 0) {
           clearInterval(timerInterval);
           el.textContent = "Time's up!";
           el.classList.add('urgent');
+          if (!timesUpPlayed) { timesUpPlayed = true; playTimesUpSound(); }
           return;
         }
         el.textContent = remaining + 's';
@@ -360,6 +385,11 @@
     // ── Select a player to answer ─────────────────────────────────────────
     function selectPlayer(socketId) {
       socket.emit('host_select_player', { roomCode, socketId });
+    }
+
+    // ── Unselect current player (keeps buzz order, lets host pick next) ───
+    function unselectPlayer() {
+      socket.emit('host_unselect_player', { roomCode });
     }
 
     // ── Reset buzzer ──────────────────────────────────────────────────────
@@ -413,8 +443,10 @@
       el.innerHTML = entries.map(([id, p]) => {
         const isAnswering = id === answeringPlayer;
         const rowCls = 'score-row' + (isAnswering ? ' answering' : '');
-        const selectCls = 'btn-select' + (isAnswering ? ' active' : '');
-        const selectLabel = isAnswering ? '★ Answering' : 'Select';
+        // Answering player gets an Unselect button; others get Select (disabled if someone is already answering)
+        const actionBtn = isAnswering
+          ? `<button class="btn-unselect" onclick="unselectPlayer()">Unselect</button>`
+          : `<button class="btn-select" onclick="selectPlayer('${esc(id)}')" ${answeringPlayer ? 'disabled' : ''}>Select</button>`;
 
         return `<div class="${rowCls}" data-id="${esc(id)}">
           <span class="score-name">${esc(p.name)}</span>
@@ -427,7 +459,7 @@
             onblur="commitScore('${esc(id)}', this)"
           />
           <span class="pts-label">pts</span>
-          <button class="${selectCls}" onclick="selectPlayer('${esc(id)}')">${selectLabel}</button>
+          ${actionBtn}
         </div>`;
       }).join('');
     }
