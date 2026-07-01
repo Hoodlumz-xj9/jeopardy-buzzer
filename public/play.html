@@ -11,12 +11,12 @@
       --bg:      #0a0c14;
       --surface: #131829;
       --blue:    #1a4fa0;
+      --blue-lt: #2563c9;
       --gold:    #f5c518;
+      --orange:  #e67e22;
       --text:    #e8eaf0;
-      --muted:   #7a8099;
-      --red:     #c0392b;
-      --red-lt:  #e74c3c;
-      --danger:  #e74c3c;
+      --muted:   #9aa3be;   /* lifted from #7a8099 for better contrast */
+      --danger:  #e67e22;   /* orange — avoids red/green confusion */
       --radius:  10px;
     }
 
@@ -40,16 +40,23 @@
       justify-content: space-between;
       align-items: center;
     }
+    .game-title {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: var(--gold);
+      letter-spacing: 1px;
+      line-height: 1.2;
+    }
     .room-code {
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       color: var(--muted);
       letter-spacing: 1px;
       text-transform: uppercase;
+      margin-top: 2px;
     }
     .room-code span {
-      color: var(--gold);
-      font-weight: 700;
-      font-size: 1rem;
+      color: var(--text);
+      font-weight: 600;
     }
     .player-badge {
       font-size: 0.85rem;
@@ -85,7 +92,11 @@
       transition: background 0.3s;
     }
     .score-row:last-child { border-bottom: none; }
-    .score-row.me { background: rgba(26, 79, 160, 0.25); }
+    /* Left border + tint — two signals (shape + color) not just color alone */
+    .score-row.me {
+      background: rgba(37, 99, 201, 0.2);
+      border-left: 3px solid var(--blue-lt);
+    }
     .score-row.answering {
       background: rgba(245, 197, 24, 0.12);
       border-left: 3px solid var(--gold);
@@ -130,22 +141,23 @@
       box-shadow: none;
       cursor: not-allowed;
     }
-    /* Red when this player is first buzzer — pulsing glow */
+    /* Orange when first — distinguishable by all color-blind types vs blue/gold */
     #buzzBtn.first-buzz {
-      background: radial-gradient(circle at 35% 35%, #ff6b6b, var(--red) 60%);
+      background: radial-gradient(circle at 35% 35%, #f0a060, var(--orange) 60%);
       color: #fff;
-      animation: pulseRed 1s ease-in-out infinite;
+      animation: pulseOrange 1s ease-in-out infinite;
     }
-    @keyframes pulseRed {
-      0%, 100% { box-shadow: 0 0 30px rgba(192,57,43,0.5); }
-      50%       { box-shadow: 0 0 70px rgba(231,76,60,0.9); }
+    @keyframes pulseOrange {
+      0%, 100% { box-shadow: 0 0 30px rgba(230,126,34,0.5); }
+      50%       { box-shadow: 0 0 70px rgba(230,126,34,0.9); }
     }
 
-    /* Red + disabled when this player buzzed but wasn't first */
+    /* Dimmed orange when buzzed but not first */
     #buzzBtn.buzzed {
-      background: radial-gradient(circle at 35% 35%, #ff6b6b, var(--red) 60%);
-      color: #fff;
-      opacity: 0.6;
+      background: radial-gradient(circle at 35% 35%, #888, #555);
+      color: #ccc;
+      font-size: 1.1rem;
+      opacity: 0.75;
       cursor: not-allowed;
       box-shadow: none;
     }
@@ -164,12 +176,12 @@
       border-radius: var(--radius);
     }
     .buzz-order-title {
-      background: #1a1e30;
+      background: var(--blue);
       padding: 8px 16px;
       font-size: 0.8rem;
       letter-spacing: 1px;
       text-transform: uppercase;
-      color: var(--muted);
+      color: #e0e8ff;
     }
     .buzz-list {
       list-style: none;
@@ -182,20 +194,25 @@
       align-items: center;
       gap: 10px;
     }
+    /* Gold left border on first place — shape signal, not just badge color */
+    .buzz-list li.buzz-first {
+      border-left: 3px solid var(--gold);
+      background: rgba(245,197,24,0.06);
+    }
     .buzz-rank {
-      background: var(--blue);
+      background: var(--blue-lt);
       color: #fff;
-      font-size: 0.75rem;
+      font-size: 0.8rem;
       font-weight: 700;
-      width: 24px;
-      height: 24px;
+      width: 26px;
+      height: 26px;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
     }
-    .buzz-rank.gold { background: var(--gold); color: #0a0c14; }
+    .buzz-rank.first { background: var(--gold); color: #0a0c14; font-size: 0.9rem; }
     .buzz-empty { padding: 12px 16px; color: var(--muted); font-size: 0.9rem; }
 
     /* ── Answering highlight (this player is selected) ──────────── */
@@ -231,7 +248,7 @@
       transform-origin: center;
       transform: scaleX(1);
       transition: transform 0.25s linear, background-color 0.6s ease;
-      background: #27ae60;
+      background: var(--blue-lt);
     }
 
     .answer-label {
@@ -259,7 +276,10 @@
 <body>
 
   <header>
-    <div class="room-code">Room&nbsp;<span id="headerCode"></span></div>
+    <div>
+      <div class="game-title" id="gameTitle">Loading…</div>
+      <div class="room-code">Room&nbsp;<span id="headerCode"></span></div>
+    </div>
     <div class="player-badge" id="playerBadge"></div>
   </header>
 
@@ -335,9 +355,9 @@
         // Update bar — scaleX(1) = full, scaleX(0) = closed from both sides
         const ratio = Math.max(0, remaining / 60);
         bar.style.transform = `scaleX(${ratio})`;
-        bar.style.backgroundColor = remaining <= 10 ? '#e74c3c'
-                                   : remaining <= 30 ? '#f39c12'
-                                   :                   '#27ae60';
+        bar.style.backgroundColor = remaining <= 10 ? '#e67e22'   /* orange  */
+                                   : remaining <= 30 ? '#f5c518'   /* gold    */
+                                   :                   '#2563c9';  /* blue    */
 
         if (remaining <= 0) {
           clearInterval(timerInterval);
@@ -401,42 +421,47 @@
     });
 
     // ── Room state update ─────────────────────────────────────────────────
-    socket.on('room_state', ({ players, buzzOrder, answeringPlayer, timerEndsAt }) => {
+    socket.on('room_state', ({ players, buzzOrder, answeringPlayer, timerEndsAt, hostName }) => {
+      // Show host name as "X's Game" — apostrophe handling for names ending in s
+      if (hostName) {
+        const suffix = hostName.endsWith('s') ? '’ Game' : '’s Game';
+        document.getElementById('gameTitle').textContent = hostName + suffix;
+      }
+
       renderScoreboard(players, answeringPlayer);
       renderBuzzOrder(buzzOrder, players);
 
       const btn = document.getElementById('buzzBtn');
-      const iAnswering = answeringPlayer === socket.id;
 
       // Show/hide the answering banner
-      if (iAnswering && timerEndsAt) {
+      if (answeringPlayer === socket.id && timerEndsAt) {
         startCountdown(timerEndsAt);
       } else {
         stopCountdown();
       }
 
-      // Disable button if we buzzed, or someone else is answering
       const iInBuzzOrder = buzzOrder.includes(socket.id);
-      const iFirst = buzzOrder[0] === socket.id;
+      const iFirst       = buzzOrder[0] === socket.id;
 
       if (iFirst) {
-        // This player was first — red + pulsing
         btn.classList.add('first-buzz');
         btn.classList.remove('buzzed');
-        btn.disabled = false;
-        btn.onclick  = null;
+        btn.textContent = '1ST!';
+        btn.disabled    = false;
+        btn.onclick     = null;
       } else if (iInBuzzOrder || answeringPlayer) {
-        // Buzzed but not first, or round is locked — red + dimmed
         btn.classList.remove('first-buzz');
         btn.classList.add('buzzed');
-        btn.disabled = true;
-        btn.onclick  = null;
+        btn.textContent = 'BUZZED';
+        btn.disabled    = true;
+        btn.onclick     = null;
       } else {
-        // Host reset — back to gold, ready to buzz again
+        // Host reset — back to ready state
         btn.classList.remove('first-buzz', 'buzzed');
-        btn.disabled = false;
-        btn.onclick  = buzz;
-        hasBuzzed    = false;
+        btn.textContent = 'BUZZ';
+        btn.disabled    = false;
+        btn.onclick     = buzz;
+        hasBuzzed       = false;
       }
     });
 
@@ -476,11 +501,13 @@
       const ordinals = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
       el.innerHTML = '<ul class="buzz-list">' +
         buzzOrder.map((id, i) => {
-          const name = players[id]?.name || 'Unknown';
-          const rankCls = i === 0 ? 'buzz-rank gold' : 'buzz-rank';
-          return `<li>
+          const name    = players[id]?.name || 'Unknown';
+          const liCls   = i === 0 ? 'buzz-first' : '';
+          const rankCls = i === 0 ? 'buzz-rank first' : 'buzz-rank';
+          const youTag  = id === socket.id ? ' <em style="color:var(--muted);font-size:0.8rem">(you)</em>' : '';
+          return `<li class="${liCls}">
             <span class="${rankCls}">${i + 1}</span>
-            ${ordinals[i] || (i + 1) + 'th'}: ${esc(name)}${id === socket.id ? ' <em style="color:var(--muted);font-size:0.8rem">(you)</em>' : ''}
+            <strong>${ordinals[i] || (i + 1) + 'th'}:</strong> ${esc(name)}${youTag}
           </li>`;
         }).join('') + '</ul>';
     }

@@ -199,20 +199,24 @@
       border-bottom: 1px solid #1a1e30;
     }
     .buzz-list li:last-child { border-bottom: none; }
+    .buzz-list li.buzz-first {
+      border-left: 3px solid var(--gold);
+      background: rgba(245,197,24,0.06);
+    }
     .buzz-rank {
-      background: var(--blue);
+      background: var(--blue-lt);
       color: #fff;
-      font-size: 0.75rem;
+      font-size: 0.8rem;
       font-weight: 700;
-      width: 24px;
-      height: 24px;
+      width: 26px;
+      height: 26px;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
     }
-    .buzz-rank.gold { background: var(--gold); color: #0a0c14; }
+    .buzz-rank.first { background: var(--gold); color: #0a0c14; font-size: 0.9rem; }
     .buzz-empty { padding: 14px 16px; color: var(--muted); font-size: 0.9rem; }
   </style>
 </head>
@@ -428,8 +432,9 @@
       el.innerHTML = '<ul class="buzz-list">' +
         buzzOrder.map((id, i) => {
           const name    = players[id]?.name || 'Unknown';
-          const rankCls = i === 0 ? 'buzz-rank gold' : 'buzz-rank';
-          return `<li>
+          const liCls   = i === 0 ? 'buzz-first' : '';
+          const rankCls = i === 0 ? 'buzz-rank first' : 'buzz-rank';
+          return `<li class="${liCls}">
             <span class="${rankCls}">${i + 1}</span>
             <strong>${ordinals[i] || (i + 1) + 'th'}:</strong> ${esc(name)}
           </li>`;
