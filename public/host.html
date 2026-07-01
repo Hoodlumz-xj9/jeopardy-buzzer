@@ -288,7 +288,7 @@
 
   <!-- Header -->
   <div class="top-bar">
-    <div class="logo">JEOPARDY!</div>
+    <div class="logo" id="logoText">JEOPARDY!</div>
     <div class="host-tag" id="hostBadge">Host</div>
   </div>
 
@@ -471,6 +471,7 @@
       // Toggle which panel is visible based on the room's game mode (fixed at creation)
       document.getElementById('buzzerPanel').style.display = mode === 'wordle' ? 'none' : '';
       document.getElementById('wordlePanel').style.display = mode === 'wordle' ? '' : 'none';
+      document.getElementById('logoText').textContent = mode === 'wordle' ? 'HOODLUMZLE!' : 'JEOPARDY!';
 
       renderScoreboard(players, buzzOrder, answeringPlayer);
       renderBuzzOrder(buzzOrder, players);

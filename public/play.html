@@ -512,9 +512,11 @@
 
     // ── Room state update ─────────────────────────────────────────────────
     socket.on('room_state', ({ players, buzzOrder, answeringPlayer, timerEndsAt, hostName, mode }) => {
-      // Show host name as "X's Game" — apostrophe handling for names ending in s
+      // Show host name as "X's Jeopardy" or "X's Hoodlumzle" depending on mode
+      // — apostrophe handling for names ending in s
       if (hostName) {
-        const suffix = hostName.endsWith('s') ? '’ Game' : '’s Game';
+        const brand  = mode === 'wordle' ? 'Hoodlumzle' : 'Jeopardy';
+        const suffix = hostName.endsWith('s') ? `’ ${brand}` : `’s ${brand}`;
         document.getElementById('gameTitle').textContent = hostName + suffix;
       }
 
@@ -656,12 +658,22 @@
       currentGuess = '';
     }
 
-    // Physical keyboard support (mirrors the spacebar-buzz pattern above)
+    // Physical keyboard support (mirrors the spacebar-buzz pattern above).
+    // preventDefault matters here: an unhandled Backspace with no input focused
+    // can trigger the browser's "navigate back" action in some browsers, which
+    // would yank the player off the page entirely.
     document.addEventListener('keydown', e => {
       if (document.getElementById('wordlePanel').style.display === 'none') return;
-      if (/^[a-zA-Z]$/.test(e.key)) typeLetter(e.key.toUpperCase());
-      else if (e.key === 'Backspace') backspace();
-      else if (e.key === 'Enter') submitGuess();
+      if (/^[a-zA-Z]$/.test(e.key)) {
+        e.preventDefault();
+        typeLetter(e.key.toUpperCase());
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        backspace();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        submitGuess();
+      }
     });
 
     // ── Render helpers ────────────────────────────────────────────────────
