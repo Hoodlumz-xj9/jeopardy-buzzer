@@ -8,8 +8,8 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:      #0a0c14;
-      --surface: #131829;
+      --bg:      #5753c9;
+      --surface: #1e1b45;
       --blue:    #1a4fa0;
       --blue-lt: #2563c9;
       --gold:    #f5c518;
@@ -37,22 +37,29 @@
       width: 100%;
       max-width: 480px;
       display: flex;
-      justify-content: space-between;
+      flex-direction: column;
       align-items: center;
+      gap: 6px;
     }
     .game-title {
-      font-size: 1.15rem;
+      font-size: 1.6rem;
       font-weight: 800;
       color: var(--gold);
       letter-spacing: 1px;
+      text-align: center;
       line-height: 1.2;
+    }
+    .header-sub {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     .room-code {
       font-size: 0.75rem;
       color: var(--muted);
       letter-spacing: 1px;
       text-transform: uppercase;
-      margin-top: 2px;
     }
     .room-code span {
       color: var(--text);
@@ -70,7 +77,7 @@
       width: 100%;
       max-width: 480px;
       background: var(--surface);
-      border: 1px solid #222840;
+      border: 1px solid #2d2a5e;
       border-radius: var(--radius);
       overflow: hidden;
     }
@@ -87,7 +94,7 @@
       justify-content: space-between;
       align-items: center;
       padding: 10px 16px;
-      border-bottom: 1px solid #1a1e30;
+      border-bottom: 1px solid #252254;
       font-size: 0.95rem;
       transition: background 0.3s;
     }
@@ -172,7 +179,7 @@
       width: 100%;
       max-width: 480px;
       background: var(--surface);
-      border: 1px solid #222840;
+      border: 1px solid #2d2a5e;
       border-radius: var(--radius);
     }
     .buzz-order-title {
@@ -276,11 +283,11 @@
 <body>
 
   <header>
-    <div>
-      <div class="game-title" id="gameTitle">Loading…</div>
+    <div class="game-title" id="gameTitle">Loading…</div>
+    <div class="header-sub">
       <div class="room-code">Room&nbsp;<span id="headerCode"></span></div>
+      <div class="player-badge" id="playerBadge"></div>
     </div>
-    <div class="player-badge" id="playerBadge"></div>
   </header>
 
   <!-- Answering banner (shown only when this player is selected) -->
