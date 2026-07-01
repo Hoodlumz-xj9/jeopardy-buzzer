@@ -76,37 +76,6 @@
       color: var(--muted);
       margin-bottom: 16px;
     }
-    .join-link-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: #0a0c14;
-      border: 1px solid #2a3050;
-      border-radius: 6px;
-      padding: 8px 12px;
-    }
-    #joinLink {
-      flex: 1;
-      font-size: 0.85rem;
-      color: var(--muted);
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-    }
-    .btn-copy {
-      background: var(--blue);
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 6px 14px;
-      font-size: 0.82rem;
-      font-weight: 700;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: filter 0.15s;
-    }
-    .btn-copy:hover { filter: brightness(1.2); }
-    .btn-copy.copied { background: var(--green); }
 
     /* ── Section titles ─────────────────────────────────────────── */
     .section {
@@ -259,10 +228,6 @@
   <div class="room-card">
     <div class="room-code-display" id="displayCode"></div>
     <div class="room-label">Room Code — share this with players</div>
-    <div class="join-link-row">
-      <span id="joinLink"></span>
-      <button class="btn-copy" id="copyBtn" onclick="copyLink()">Copy Link</button>
-    </div>
   </div>
 
   <!-- Controls: timer + reset -->
@@ -301,20 +266,6 @@
 
     document.getElementById('displayCode').textContent = roomCode;
     document.getElementById('hostBadge').textContent   = hostName + ' (host)';
-
-    // Build join link using current origin
-    const joinUrl = location.origin + '/play/' + roomCode;
-    document.getElementById('joinLink').textContent = joinUrl;
-
-    // ── Copy link button ──────────────────────────────────────────────────
-    function copyLink() {
-      navigator.clipboard.writeText(joinUrl).then(() => {
-        const btn = document.getElementById('copyBtn');
-        btn.textContent = 'Copied!';
-        btn.classList.add('copied');
-        setTimeout(() => { btn.textContent = 'Copy Link'; btn.classList.remove('copied'); }, 2000);
-      });
-    }
 
     // ── Times-up sound ────────────────────────────────────────────────────
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
