@@ -278,6 +278,69 @@
       75%       { transform: translateX(3px); }
     }
     .timesup { font-size: 1.4rem; font-weight: 700; color: var(--danger); }
+
+    /* ── Wordle mode ────────────────────────────────────────────── */
+    .wordle-card {
+      width: 100%;
+      max-width: 480px;
+      background: var(--surface);
+      border: 2px solid #3a4060;
+      border-radius: var(--radius);
+      padding: 20px;
+      text-align: center;
+    }
+    .wordle-row { display: flex; gap: 5px; justify-content: center; margin-bottom: 5px; }
+    .wordle-tile {
+      width: 42px;
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1.2rem;
+      color: #fff;
+      border: 2px solid #2a3050;
+      border-radius: 4px;
+      background: transparent;
+      flex-shrink: 0;
+    }
+    .wordle-tile.correct { background: var(--gold); color: #0a0c14; border-color: var(--gold); }
+    .wordle-tile.present { background: var(--blue-lt); color: #fff; border-color: var(--blue-lt); }
+    .wordle-tile.absent  { background: #2a3050; color: var(--muted); border-color: #2a3050; }
+
+    .wordle-keyboard { width: 100%; max-width: 480px; }
+    .kb-row { display: flex; gap: 6px; justify-content: center; margin-bottom: 6px; }
+    .kb-key {
+      min-width: 30px;
+      height: 46px;
+      padding: 0 8px;
+      background: #2a3050;
+      color: var(--text);
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      flex: 1;
+    }
+    .kb-key.wide { flex: 1.6; font-size: 0.7rem; }
+    .kb-key.correct { background: var(--gold); color: #0a0c14; }
+    .kb-key.present { background: var(--blue-lt); color: #fff; }
+    .kb-key.absent  { background: #14172a; color: var(--muted); }
+
+    .wordle-player-card {
+      background: var(--surface);
+      border: 2px solid #3a4060;
+      border-radius: var(--radius);
+      padding: 14px;
+      width: 100%;
+      max-width: 480px;
+    }
+    .wordle-player-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 8px; }
   </style>
 </head>
 <body>
@@ -290,31 +353,51 @@
     </div>
   </header>
 
-  <!-- Answering banner (shown only when this player is selected) -->
-  <div id="answerBanner">
-    <div class="timer-bar-track">
-      <div class="timer-bar-fill" id="timerBar"></div>
+  <!-- Buzzer panel -->
+  <div id="buzzerPanel">
+    <!-- Answering banner (shown only when this player is selected) -->
+    <div id="answerBanner">
+      <div class="timer-bar-track">
+        <div class="timer-bar-fill" id="timerBar"></div>
+      </div>
+      <div class="answer-label">Your turn to answer!</div>
+      <div id="countdown">60</div>
     </div>
-    <div class="answer-label">Your turn to answer!</div>
-    <div id="countdown">60</div>
+
+    <!-- Scoreboard -->
+    <div class="scoreboard">
+      <div class="scoreboard-title">Scoreboard</div>
+      <div id="scoreList"><div class="empty-msg">Waiting for players…</div></div>
+    </div>
+
+    <!-- Buzz button -->
+    <div class="buzz-section">
+      <button id="buzzBtn" onclick="buzz()">BUZZ</button>
+      <div class="buzz-hint">or press <strong>Space</strong></div>
+    </div>
+
+    <!-- Buzz order -->
+    <div class="buzz-order">
+      <div class="buzz-order-title">Buzz Order</div>
+      <div id="buzzOrderList"><div class="buzz-empty">No buzzes yet</div></div>
+    </div>
   </div>
 
-  <!-- Scoreboard -->
-  <div class="scoreboard">
-    <div class="scoreboard-title">Scoreboard</div>
-    <div id="scoreList"><div class="empty-msg">Waiting for players…</div></div>
-  </div>
+  <!-- Wordle panel -->
+  <div id="wordlePanel" style="display:none">
+    <div class="wordle-card" id="wordleWaiting">Waiting for the host to push a word…</div>
 
-  <!-- Buzz button -->
-  <div class="buzz-section">
-    <button id="buzzBtn" onclick="buzz()">BUZZ</button>
-    <div class="buzz-hint">or press <strong>Space</strong></div>
-  </div>
+    <div id="wordleActive" style="display:none">
+      <div class="wordle-card">
+        <div id="myWordleGrid"></div>
+      </div>
+      <div class="wordle-keyboard" id="wordleKeyboard"></div>
+    </div>
 
-  <!-- Buzz order -->
-  <div class="buzz-order">
-    <div class="buzz-order-title">Buzz Order</div>
-    <div id="buzzOrderList"><div class="buzz-empty">No buzzes yet</div></div>
+    <div id="solvedSection" style="display:none">
+      <div class="buzz-order-title" style="border-radius:10px 10px 0 0;">Solved</div>
+      <div id="solvedList"></div>
+    </div>
   </div>
 
   <!-- Socket.io client (served automatically by socket.io) -->
@@ -428,12 +511,16 @@
     });
 
     // ── Room state update ─────────────────────────────────────────────────
-    socket.on('room_state', ({ players, buzzOrder, answeringPlayer, timerEndsAt, hostName }) => {
+    socket.on('room_state', ({ players, buzzOrder, answeringPlayer, timerEndsAt, hostName, mode }) => {
       // Show host name as "X's Game" — apostrophe handling for names ending in s
       if (hostName) {
         const suffix = hostName.endsWith('s') ? '’ Game' : '’s Game';
         document.getElementById('gameTitle').textContent = hostName + suffix;
       }
+
+      // Toggle which panel is visible based on the room's game mode (fixed at creation)
+      document.getElementById('buzzerPanel').style.display = mode === 'wordle' ? 'none' : '';
+      document.getElementById('wordlePanel').style.display = mode === 'wordle' ? '' : 'none';
 
       renderScoreboard(players, answeringPlayer);
       renderBuzzOrder(buzzOrder, players);
@@ -470,6 +557,111 @@
         btn.onclick     = buzz;
         hasBuzzed       = false;
       }
+    });
+
+    // ── Wordle mode ────────────────────────────────────────────────────────
+    let lastWordleState = null;
+    let currentGuess    = '';
+    let myWordLength    = null;
+
+    const KB_ROWS = ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'];
+    (function buildKeyboard() {
+      const el = document.getElementById('wordleKeyboard');
+      el.innerHTML = KB_ROWS.map((row, i) => {
+        let keys = row.split('').map(ch =>
+          `<div class="kb-key" data-key="${ch}" onclick="typeLetter('${ch}')">${ch}</div>`
+        ).join('');
+        if (i === 2) {
+          keys = `<div class="kb-key wide" onclick="submitGuess()">ENTER</div>` + keys +
+                 `<div class="kb-key wide" onclick="backspace()">&#9003;</div>`;
+        }
+        return `<div class="kb-row">${keys}</div>`;
+      }).join('');
+    })();
+
+    socket.on('wordle_state', (state) => {
+      lastWordleState = state;
+      myWordLength     = state.wordLength;
+
+      document.getElementById('wordleWaiting').style.display = state.pushed ? 'none' : '';
+      document.getElementById('wordleActive').style.display  = state.pushed ? '' : 'none';
+      if (!state.pushed) currentGuess = '';
+
+      renderMyGrid();
+      renderKeyboard(state.myGuesses);
+      renderSolvedSection(state.solvedBoards);
+    });
+
+    function renderMyGrid() {
+      if (!lastWordleState) return;
+      const { myGuesses, mySolved } = lastWordleState;
+      const el = document.getElementById('myWordleGrid');
+
+      const rows = myGuesses.map(g =>
+        `<div class="wordle-row">` + g.guess.split('').map((ch, i) =>
+          `<div class="wordle-tile ${g.result[i]}">${esc(ch)}</div>`
+        ).join('') + `</div>`
+      );
+
+      if (!mySolved) {
+        const padded = currentGuess.padEnd(myWordLength || 0, ' ').split('');
+        rows.push(`<div class="wordle-row">` + padded.map(ch =>
+          `<div class="wordle-tile">${ch.trim() ? esc(ch) : ''}</div>`
+        ).join('') + `</div>`);
+      }
+
+      el.innerHTML = rows.join('');
+    }
+
+    function renderKeyboard(guesses) {
+      const rank = { absent: 0, present: 1, correct: 2 };
+      const best = {};
+      guesses.forEach(g => g.guess.split('').forEach((ch, i) => {
+        const st = g.result[i];
+        if (!best[ch] || rank[st] > rank[best[ch]]) best[ch] = st;
+      }));
+      document.querySelectorAll('.kb-key[data-key]').forEach(keyEl => {
+        const k = keyEl.dataset.key;
+        keyEl.className = 'kb-key' + (best[k] ? ' ' + best[k] : '');
+      });
+    }
+
+    function renderSolvedSection(solvedBoards) {
+      const entries = Object.entries(solvedBoards || {});
+      document.getElementById('solvedSection').style.display = entries.length ? '' : 'none';
+      document.getElementById('solvedList').innerHTML = entries.map(([id, board]) => `
+        <div class="wordle-player-card">
+          <div class="wordle-player-name">${esc(board.name)}${id === socket.id ? ' <em style="color:var(--muted);font-size:0.8rem">(you)</em>' : ''}</div>
+          ${board.guesses.map(g => `<div class="wordle-row">` +
+            g.guess.split('').map((ch, i) => `<div class="wordle-tile ${g.result[i]}">${esc(ch)}</div>`).join('') +
+          `</div>`).join('')}
+        </div>`).join('');
+    }
+
+    function typeLetter(ch) {
+      if (lastWordleState?.mySolved) return;
+      if (currentGuess.length >= (myWordLength || 0)) return;
+      currentGuess += ch;
+      renderMyGrid();
+    }
+    function backspace() {
+      if (lastWordleState?.mySolved) return;
+      currentGuess = currentGuess.slice(0, -1);
+      renderMyGrid();
+    }
+    function submitGuess() {
+      if (lastWordleState?.mySolved) return;
+      if (currentGuess.length !== myWordLength) return;
+      socket.emit('wordle_guess', { roomCode, guess: currentGuess });
+      currentGuess = '';
+    }
+
+    // Physical keyboard support (mirrors the spacebar-buzz pattern above)
+    document.addEventListener('keydown', e => {
+      if (document.getElementById('wordlePanel').style.display === 'none') return;
+      if (/^[a-zA-Z]$/.test(e.key)) typeLetter(e.key.toUpperCase());
+      else if (e.key === 'Backspace') backspace();
+      else if (e.key === 'Enter') submitGuess();
     });
 
     // ── Render helpers ────────────────────────────────────────────────────

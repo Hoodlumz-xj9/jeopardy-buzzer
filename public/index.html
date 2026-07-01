@@ -88,6 +88,7 @@
       flex: 1;
     }
     .btn-secondary:hover:not(:disabled) { filter: brightness(1.2); }
+    .btn-secondary.selected { background: var(--gold); color: #0a0c14; }
 
     .btn-danger {
       background: var(--danger);
@@ -206,6 +207,12 @@
       <label for="roomPass">Room password</label>
       <input id="roomPass" type="text" placeholder="share with players" maxlength="30" />
 
+      <label>Game mode</label>
+      <div class="btn-row" style="margin-bottom:0">
+        <button type="button" class="btn-secondary selected" id="modeBuzzerBtn" onclick="selectMode('buzzer')">Buzzer</button>
+        <button type="button" class="btn-secondary" id="modeWordleBtn" onclick="selectMode('wordle')">Wordle</button>
+      </div>
+
       <div id="createError" class="error-banner"></div>
 
       <div class="modal-actions">
@@ -250,9 +257,18 @@
       el.classList.add('visible');
     }
 
+    // ── Game mode selector (Create modal) ─────────────────────────────────
+    let selectedMode = 'buzzer';
+    function selectMode(mode) {
+      selectedMode = mode;
+      document.getElementById('modeBuzzerBtn').classList.toggle('selected', mode === 'buzzer');
+      document.getElementById('modeWordleBtn').classList.toggle('selected', mode === 'wordle');
+    }
+
     // ── Modal helpers ─────────────────────────────────────────────────────
     function openModal(type) {
       document.getElementById(type + 'Modal').classList.add('open');
+      if (type === 'create') selectMode('buzzer'); // reset selection each time the modal opens
       // Focus first input
       const first = document.querySelector('#' + type + 'Modal input');
       if (first) setTimeout(() => first.focus(), 50);
@@ -295,7 +311,7 @@
         const res  = await fetch('/create-room', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ hostName, password }),
+          body:    JSON.stringify({ hostName, password, mode: selectedMode }),
         });
         const data = await res.json();
         if (!res.ok) return showError('createError', data.error || 'Failed to create room.');

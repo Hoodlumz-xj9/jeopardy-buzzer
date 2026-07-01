@@ -19,10 +19,18 @@ app.use(express.json());
 // Room shape:
 // {
 //   code, password, hostName,
+//   mode: 'buzzer' | 'wordle',     // set at creation, never changes
+//   hostSocketId: socketId | null, // the host's current socket — also used to authorize host-only actions
 //   players: { socketId: { name, score } },
 //   buzzOrder: [socketId, ...],   // oldest first
 //   answeringPlayer: socketId | null,
-//   timerEndsAt: epoch-ms | null
+//   timerEndsAt: epoch-ms | null,
+//   wordle: {                      // present only when mode === 'wordle'
+//     word: "STRING" | null,       // uppercase secret word; null = not pushed yet
+//     pushed: bool,
+//     guesses: { socketId: [ { guess, result: ["correct"|"present"|"absent", ...] } ] },
+//     solved: { socketId: true },
+//   }
 // }
 const rooms = {};
 
@@ -38,7 +46,8 @@ function generateRoomCode() {
 }
 
 // Send the full room state to every socket currently in the room.
-// This is the only broadcast function — keeps the state machine simple.
+// This is the only uniform broadcast function — keeps the state machine simple.
+// (Wordle mode needs per-recipient visibility, so it has its own broadcaster below.)
 function broadcastState(roomCode) {
   const room = rooms[roomCode];
   if (!room) return;
@@ -48,7 +57,80 @@ function broadcastState(roomCode) {
     answeringPlayer: room.answeringPlayer,
     timerEndsAt:     room.timerEndsAt,
     hostName:        room.hostName,
+    mode:            room.mode,
   });
+}
+
+// Score a Wordle guess against the secret word using the standard two-pass
+// algorithm — this correctly handles repeated letters (e.g. secret "SPEED"
+// vs guess "ERASE": both E's come back "present" because SPEED has two E's
+// to give out). Pass 1 must fully finish (all exact matches found and
+// removed from the letter pool) before pass 2 starts, or duplicate-letter
+// cases score incorrectly.
+function scoreGuess(secret, guess) {
+  const len = secret.length;
+  const result = new Array(len).fill('absent');
+  const freq = {};
+  for (const ch of secret) freq[ch] = (freq[ch] || 0) + 1;
+
+  for (let i = 0; i < len; i++) {           // pass 1: exact position matches
+    if (guess[i] === secret[i]) {
+      result[i] = 'correct';
+      freq[guess[i]]--;
+    }
+  }
+  for (let i = 0; i < len; i++) {           // pass 2: right letter, wrong spot
+    if (result[i] === 'correct') continue;
+    if (freq[guess[i]] > 0) {
+      result[i] = 'present';
+      freq[guess[i]]--;
+    }
+  }
+  return result;
+}
+
+// Wordle state is visibility-restricted per recipient (host sees every board;
+// each player sees only their own board plus anyone who has already solved),
+// so unlike broadcastState this sends a different payload to each socket.
+// io.to(oneSocketId) works because Socket.io auto-joins every socket to a
+// private room named after its own id.
+function broadcastWordleState(roomCode) {
+  const room = rooms[roomCode];
+  if (!room || room.mode !== 'wordle') return;
+  const w = room.wordle;
+
+  const solvedBoards = {};
+  for (const id of Object.keys(w.solved)) {
+    if (w.solved[id] && room.players[id]) {
+      solvedBoards[id] = { name: room.players[id].name, guesses: w.guesses[id] || [] };
+    }
+  }
+
+  if (room.hostSocketId) {
+    const allBoards = {};
+    for (const id of Object.keys(room.players)) {
+      allBoards[id] = {
+        name:    room.players[id].name,
+        guesses: w.guesses[id] || [],
+        solved:  !!w.solved[id],
+      };
+    }
+    io.to(room.hostSocketId).emit('wordle_state', {
+      pushed:     w.pushed,
+      wordLength: w.word ? w.word.length : null,
+      allBoards,
+    });
+  }
+
+  for (const id of Object.keys(room.players)) {
+    io.to(id).emit('wordle_state', {
+      pushed:      w.pushed,
+      wordLength:  w.word ? w.word.length : null,
+      myGuesses:   w.guesses[id] || [],
+      mySolved:    !!w.solved[id],
+      solvedBoards,
+    });
+  }
 }
 
 // ── HTTP routes ───────────────────────────────────────────────────────────────
@@ -56,7 +138,7 @@ function broadcastState(roomCode) {
 // POST /create-room  →  { roomCode }
 // Called from the landing page "Create Game" form.
 app.post('/create-room', (req, res) => {
-  const { hostName, password } = req.body;
+  const { hostName, password, mode } = req.body;
   if (!hostName || !password)
     return res.status(400).json({ error: 'hostName and password are required' });
 
@@ -65,13 +147,18 @@ app.post('/create-room', (req, res) => {
     code,
     password,
     hostName,
+    mode:            mode === 'wordle' ? 'wordle' : 'buzzer',
+    hostSocketId:    null,
     players:         {},
     buzzOrder:       [],
     answeringPlayer: null,
     timerEndsAt:     null,
   };
+  if (rooms[code].mode === 'wordle') {
+    rooms[code].wordle = { word: null, pushed: false, guesses: {}, solved: {} };
+  }
 
-  console.log(`Room created: ${code} by ${hostName}`);
+  console.log(`Room created: ${code} by ${hostName} (${rooms[code].mode} mode)`);
   res.json({ roomCode: code });
 });
 
@@ -119,6 +206,7 @@ io.on('connection', (socket) => {
 
     console.log(`${playerName} joined room ${roomCode}`);
     broadcastState(roomCode);
+    if (room.mode === 'wordle') broadcastWordleState(roomCode);
   });
 
   // ── Host socket identifies itself (no password re-check — room was already created) ──
@@ -129,8 +217,10 @@ io.on('connection', (socket) => {
 
     currentRoom = roomCode;
     isHost      = true;
+    room.hostSocketId = socket.id; // self-heals on host page refresh — new socket just overwrites the old id
     socket.join(roomCode);
     broadcastState(roomCode);
+    if (room.mode === 'wordle') broadcastWordleState(roomCode);
   });
 
   // ── Player buzzes ────────────────────────────────────────────────────────
@@ -187,6 +277,66 @@ io.on('connection', (socket) => {
     broadcastState(roomCode);
   });
 
+  // ── Host pushes the secret word live — starts a fresh round ─────────────
+  socket.on('wordle_push_word', ({ roomCode, word }) => {
+    roomCode = roomCode?.toUpperCase();
+    const room = rooms[roomCode];
+    if (!room || room.mode !== 'wordle' || socket.id !== room.hostSocketId) return;
+
+    const cleaned = String(word || '').trim().toUpperCase().replace(/[^A-Z]/g, '');
+    if (!cleaned) return;
+
+    room.wordle.word    = cleaned;
+    room.wordle.pushed  = true;
+    room.wordle.guesses = {};
+    room.wordle.solved  = {};
+    broadcastWordleState(roomCode);
+  });
+
+  // ── Host unpushes: clears the word back to an editable state ─────────────
+  socket.on('wordle_unpush_word', ({ roomCode }) => {
+    roomCode = roomCode?.toUpperCase();
+    const room = rooms[roomCode];
+    if (!room || room.mode !== 'wordle' || socket.id !== room.hostSocketId) return;
+
+    room.wordle.word    = null;
+    room.wordle.pushed  = false;
+    room.wordle.guesses = {};
+    room.wordle.solved  = {};
+    broadcastWordleState(roomCode);
+  });
+
+  // ── Host resets all players' boards but keeps the same word active ──────
+  socket.on('wordle_reset_players', ({ roomCode }) => {
+    roomCode = roomCode?.toUpperCase();
+    const room = rooms[roomCode];
+    if (!room || room.mode !== 'wordle' || socket.id !== room.hostSocketId) return;
+
+    room.wordle.guesses = {};
+    room.wordle.solved  = {};
+    broadcastWordleState(roomCode);
+  });
+
+  // ── Player submits a guess ────────────────────────────────────────────────
+  socket.on('wordle_guess', ({ roomCode, guess }) => {
+    roomCode = roomCode?.toUpperCase();
+    const room = rooms[roomCode];
+    if (!room || room.mode !== 'wordle' || !room.wordle.pushed) return;
+    if (!room.players[socket.id] || room.wordle.solved[socket.id]) return;
+
+    const cleaned = String(guess || '').trim().toUpperCase().replace(/[^A-Z]/g, '');
+    const secret  = room.wordle.word;
+    if (!secret || cleaned.length !== secret.length) return;
+
+    const result = scoreGuess(secret, cleaned);
+    if (!room.wordle.guesses[socket.id]) room.wordle.guesses[socket.id] = [];
+    room.wordle.guesses[socket.id].push({ guess: cleaned, result });
+
+    if (cleaned === secret) room.wordle.solved[socket.id] = true;
+
+    broadcastWordleState(roomCode);
+  });
+
   // ── Disconnect cleanup ───────────────────────────────────────────────────
   socket.on('disconnect', () => {
     if (!currentRoom) return;
@@ -201,7 +351,12 @@ io.on('connection', (socket) => {
         room.answeringPlayer = null;
         room.timerEndsAt     = null;
       }
+      if (room.mode === 'wordle' && room.wordle) {
+        delete room.wordle.guesses[socket.id];
+        delete room.wordle.solved[socket.id];
+      }
       broadcastState(currentRoom);
+      if (room.mode === 'wordle') broadcastWordleState(currentRoom);
     }
 
     // Delete the room if no sockets remain (host left or last player left)

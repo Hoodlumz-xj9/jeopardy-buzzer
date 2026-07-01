@@ -218,6 +218,70 @@
     }
     .buzz-rank.first { background: var(--gold); color: #0a0c14; font-size: 0.9rem; }
     .buzz-empty { padding: 14px 16px; color: var(--muted); font-size: 0.9rem; }
+
+    /* ── Wordle mode ────────────────────────────────────────────── */
+    .wordle-word-row { display: flex; gap: 10px; align-items: center; }
+    .wordle-word-row input[type="text"] {
+      flex: 1;
+      background: #0a0c14;
+      border: 1px solid #3e3b70;
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 1.1rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 10px 14px;
+      outline: none;
+    }
+    .wordle-word-row input[type="text"]:focus { border-color: var(--blue-lt); }
+    .btn-push { background: var(--gold); color: #0a0c14; padding: 10px 20px; font-size: 0.95rem; }
+    .btn-push:hover:not(:disabled) { filter: brightness(1.1); }
+
+    .wordle-active-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    .wordle-len-confirm { font-size: 0.95rem; color: var(--gold); font-weight: 700; }
+    .btn-unpush { background: var(--danger); color: #fff; padding: 10px 18px; }
+    .btn-unpush:hover { filter: brightness(1.1); }
+    .btn-reset-players { background: #e67e22; color: #fff; padding: 10px 18px; }
+    .btn-reset-players:hover { filter: brightness(1.15); }
+
+    .wordle-boards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .wordle-player-card {
+      background: var(--surface);
+      border: 2px solid #3a4060;
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+    .wordle-player-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+    .solved-badge {
+      background: var(--gold);
+      color: #0a0c14;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .wordle-row { display: flex; gap: 4px; margin-bottom: 4px; }
+    .wordle-tile {
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.9rem;
+      color: #fff;
+      border-radius: 4px;
+      background: #2a3050;
+      flex-shrink: 0;
+    }
+    .wordle-tile.correct { background: var(--gold); color: #0a0c14; }
+    .wordle-tile.present { background: var(--blue-lt); color: #fff; }
+    .wordle-tile.absent  { background: #2a3050; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -234,31 +298,63 @@
     <div class="room-label">Room Code — share this with players</div>
   </div>
 
-  <!-- Controls: timer + reset -->
-  <div class="section">
-    <div class="section-title">Controls</div>
-    <div class="control-row">
-      <button class="btn-reset" onclick="resetBuzzer()">&#x21BA; Reset Buzzer</button>
-      <div class="timer-display">
-        <div class="timer-label">Timer</div>
-        <div id="hostCountdown" class="idle">—</div>
+  <!-- Buzzer panel -->
+  <div id="buzzerPanel">
+    <!-- Controls: timer + reset -->
+    <div class="section">
+      <div class="section-title">Controls</div>
+      <div class="control-row">
+        <button class="btn-reset" onclick="resetBuzzer()">&#x21BA; Reset Buzzer</button>
+        <div class="timer-display">
+          <div class="timer-label">Timer</div>
+          <div id="hostCountdown" class="idle">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Buzz order -->
+    <div class="section">
+      <div class="section-title">Buzz Order</div>
+      <div class="buzz-order">
+        <div id="hostBuzzOrder"><div class="buzz-empty">No buzzes yet</div></div>
+      </div>
+    </div>
+
+    <!-- Scoreboard -->
+    <div class="section">
+      <div class="section-title">Players &amp; Scores</div>
+      <div class="scoreboard" id="hostScoreboard">
+        <div class="empty-msg">Waiting for players to join…</div>
       </div>
     </div>
   </div>
 
-  <!-- Buzz order -->
-  <div class="section">
-    <div class="section-title">Buzz Order</div>
-    <div class="buzz-order">
-      <div id="hostBuzzOrder"><div class="buzz-empty">No buzzes yet</div></div>
+  <!-- Wordle panel -->
+  <div id="wordlePanel" style="display:none">
+    <div class="section">
+      <div class="section-title">Word Control</div>
+      <div class="room-card" id="wordlePrePush">
+        <div class="wordle-word-row">
+          <input type="text" id="wordleInput" placeholder="Type the secret word…" maxlength="40" />
+          <button class="btn-push" onclick="pushWord()">Push Word</button>
+        </div>
+      </div>
+      <div class="room-card" id="wordlePostPush" style="display:none">
+        <div class="wordle-active-bar">
+          <div class="wordle-len-confirm" id="wordleLenConfirm"></div>
+          <div style="display:flex; gap:10px;">
+            <button class="btn-reset-players" onclick="resetWordlePlayers()">Reset All Players</button>
+            <button class="btn-unpush" onclick="unpushWord()">Unpush</button>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
 
-  <!-- Scoreboard -->
-  <div class="section">
-    <div class="section-title">Players &amp; Scores</div>
-    <div class="scoreboard" id="hostScoreboard">
-      <div class="empty-msg">Waiting for players to join…</div>
+    <div class="section">
+      <div class="section-title">Player Boards</div>
+      <div class="wordle-boards" id="hostWordleBoards">
+        <div class="empty-msg">Waiting for players to join…</div>
+      </div>
     </div>
   </div>
 
@@ -370,7 +466,11 @@
     // ── Room state update ─────────────────────────────────────────────────
     socket.on('room_state', (state) => {
       lastState = state;
-      const { players, buzzOrder, answeringPlayer, timerEndsAt } = state;
+      const { players, buzzOrder, answeringPlayer, timerEndsAt, mode } = state;
+
+      // Toggle which panel is visible based on the room's game mode (fixed at creation)
+      document.getElementById('buzzerPanel').style.display = mode === 'wordle' ? 'none' : '';
+      document.getElementById('wordlePanel').style.display = mode === 'wordle' ? '' : 'none';
 
       renderScoreboard(players, buzzOrder, answeringPlayer);
       renderBuzzOrder(buzzOrder, players);
@@ -381,6 +481,51 @@
         stopHostCountdown();
       }
     });
+
+    // ── Wordle mode ────────────────────────────────────────────────────────
+    function pushWord() {
+      const val = document.getElementById('wordleInput').value;
+      if (!val.trim()) return;
+      socket.emit('wordle_push_word', { roomCode, word: val });
+    }
+    function unpushWord() {
+      socket.emit('wordle_unpush_word', { roomCode });
+    }
+    function resetWordlePlayers() {
+      socket.emit('wordle_reset_players', { roomCode });
+    }
+
+    socket.on('wordle_state', (state) => {
+      document.getElementById('wordlePrePush').style.display  = state.pushed ? 'none' : '';
+      document.getElementById('wordlePostPush').style.display = state.pushed ? '' : 'none';
+      if (state.pushed) {
+        document.getElementById('wordleLenConfirm').textContent = state.wordLength + '-letter word active';
+      } else {
+        document.getElementById('wordleInput').value = '';
+      }
+
+      const el = document.getElementById('hostWordleBoards');
+      const entries = Object.entries(state.allBoards || {});
+      if (entries.length === 0) {
+        el.innerHTML = '<div class="empty-msg">Waiting for players to join…</div>';
+        return;
+      }
+
+      el.innerHTML = entries.map(([id, board]) => `
+        <div class="wordle-player-card">
+          <div class="wordle-player-name">${esc(board.name)}${board.solved ? ' <span class="solved-badge">SOLVED</span>' : ''}</div>
+          ${renderMiniGrid(board.guesses)}
+        </div>`).join('');
+    });
+
+    function renderMiniGrid(guesses) {
+      if (!guesses.length) return '<div class="empty-msg" style="padding:8px 0">No guesses yet</div>';
+      return guesses.map(g => `<div class="wordle-row">` +
+        g.guess.split('').map((ch, i) =>
+          `<div class="wordle-tile ${g.result[i]}">${esc(ch)}</div>`
+        ).join('') + `</div>`
+      ).join('');
+    }
 
     // ── Render scoreboard ─────────────────────────────────────────────────
     function renderScoreboard(players, buzzOrder, answeringPlayer) {
