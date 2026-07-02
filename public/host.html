@@ -514,7 +514,7 @@
 
       el.innerHTML = entries.map(([id, board]) => `
         <div class="wordle-player-card">
-          <div class="wordle-player-name">${esc(board.name)}${board.solved ? ' <span class="solved-badge">SOLVED</span>' : ''}</div>
+          <div class="wordle-player-name"><span style="color:${safeColor(board.color)}">${esc(board.name)}</span>${board.solved ? ' <span class="solved-badge">SOLVED</span>' : ''}</div>
           ${renderMiniGrid(board.guesses)}
         </div>`).join('');
     });
@@ -550,7 +550,7 @@
           : `<button class="btn-select" onclick="selectPlayer('${esc(id)}')" ${answeringPlayer ? 'disabled' : ''}>Select</button>`;
 
         return `<div class="${rowCls}" data-id="${esc(id)}">
-          <span class="score-name">${esc(p.name)}</span>
+          <span class="score-name" style="color:${safeColor(p.color)}">${esc(p.name)}</span>
           <input
             class="score-input"
             type="number"
@@ -578,11 +578,12 @@
       el.innerHTML = '<ul class="buzz-list">' +
         buzzOrder.map((id, i) => {
           const name    = players[id]?.name || 'Unknown';
+          const color   = players[id]?.color;
           const liCls   = i === 0 ? 'buzz-first' : '';
           const rankCls = i === 0 ? 'buzz-rank first' : 'buzz-rank';
           return `<li class="${liCls}">
             <span class="${rankCls}">${i + 1}</span>
-            <strong>${ordinals[i] || (i + 1) + 'th'}:</strong> ${esc(name)}
+            <strong>${ordinals[i] || (i + 1) + 'th'}:</strong> <span style="color:${safeColor(color)}">${esc(name)}</span>
           </li>`;
         }).join('') + '</ul>';
     }
@@ -592,6 +593,11 @@
       return String(str)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;')
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Defense in depth: only ever interpolate a verified hex code into a style attribute
+    function safeColor(c) {
+      return /^#[0-9A-Fa-f]{6}$/.test(c || '') ? c : 'inherit';
     }
   </script>
 </body>

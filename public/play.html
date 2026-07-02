@@ -407,6 +407,7 @@
     const roomCode   = location.pathname.split('/').pop().toUpperCase();
     const password   = sessionStorage.getItem('roomPass')   || '';
     const playerName = sessionStorage.getItem('playerName') || '';
+    const nameColor  = sessionStorage.getItem('nameColor')  || '#E8EAF0';
 
     document.getElementById('headerCode').textContent  = roomCode;
     document.getElementById('playerBadge').textContent = playerName || 'Player';
@@ -415,8 +416,8 @@
     const socket = io();
 
     socket.on('connect', () => {
-      // Introduce ourselves to the server
-      socket.emit('join_room', { roomCode, playerName, password });
+      // Introduce ourselves to the server — name color was chosen once, in the join form
+      socket.emit('join_room', { roomCode, playerName, password, color: nameColor });
     });
 
     socket.on('error', ({ message }) => {
@@ -633,7 +634,7 @@
       document.getElementById('solvedSection').style.display = entries.length ? '' : 'none';
       document.getElementById('solvedList').innerHTML = entries.map(([id, board]) => `
         <div class="wordle-player-card">
-          <div class="wordle-player-name">${esc(board.name)}${id === socket.id ? ' <em style="color:var(--muted);font-size:0.8rem">(you)</em>' : ''}</div>
+          <div class="wordle-player-name"><span style="color:${safeColor(board.color)}">${esc(board.name)}</span>${id === socket.id ? ' <em style="color:var(--muted);font-size:0.8rem">(you)</em>' : ''}</div>
           ${board.guesses.map(g => `<div class="wordle-row">` +
             g.guess.split('').map((ch, i) => `<div class="wordle-tile ${g.result[i]}">${esc(ch)}</div>`).join('') +
           `</div>`).join('')}
@@ -697,7 +698,7 @@
         if (isAnswering) cls += ' answering';
         const tag = isMe ? ' <em style="font-size:0.75rem;color:var(--muted)">(you)</em>' : '';
         return `<div class="${cls}">
-          <span class="score-name">${esc(p.name)}${tag}</span>
+          <span class="score-name"><span style="color:${safeColor(p.color)}">${esc(p.name)}</span>${tag}</span>
           <span class="score-pts">${p.score} pts</span>
         </div>`;
       }).join('');
@@ -713,12 +714,13 @@
       el.innerHTML = '<ul class="buzz-list">' +
         buzzOrder.map((id, i) => {
           const name    = players[id]?.name || 'Unknown';
+          const color   = players[id]?.color;
           const liCls   = i === 0 ? 'buzz-first' : '';
           const rankCls = i === 0 ? 'buzz-rank first' : 'buzz-rank';
           const youTag  = id === socket.id ? ' <em style="color:var(--muted);font-size:0.8rem">(you)</em>' : '';
           return `<li class="${liCls}">
             <span class="${rankCls}">${i + 1}</span>
-            <strong>${ordinals[i] || (i + 1) + 'th'}:</strong> ${esc(name)}${youTag}
+            <strong>${ordinals[i] || (i + 1) + 'th'}:</strong> <span style="color:${safeColor(color)}">${esc(name)}</span>${youTag}
           </li>`;
         }).join('') + '</ul>';
     }
@@ -728,6 +730,11 @@
       return String(str)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;')
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Defense in depth: only ever interpolate a verified hex code into a style attribute
+    function safeColor(c) {
+      return /^#[0-9A-Fa-f]{6}$/.test(c || '') ? c : 'inherit';
     }
   </script>
 </body>

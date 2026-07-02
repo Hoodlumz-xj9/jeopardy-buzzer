@@ -21,7 +21,7 @@ app.use(express.json());
 //   code, password, hostName,
 //   mode: 'buzzer' | 'wordle',     // set at creation, never changes
 //   hostSocketId: socketId | null, // the host's current socket — also used to authorize host-only actions
-//   players: { socketId: { name, score } },
+//   players: { socketId: { name, score, color } },  // color is a "#RRGGBB" hex string
 //   buzzOrder: [socketId, ...],   // oldest first
 //   answeringPlayer: socketId | null,
 //   timerEndsAt: epoch-ms | null,
@@ -102,7 +102,7 @@ function broadcastWordleState(roomCode) {
   const solvedBoards = {};
   for (const id of Object.keys(w.solved)) {
     if (w.solved[id] && room.players[id]) {
-      solvedBoards[id] = { name: room.players[id].name, guesses: w.guesses[id] || [] };
+      solvedBoards[id] = { name: room.players[id].name, color: room.players[id].color, guesses: w.guesses[id] || [] };
     }
   }
 
@@ -111,6 +111,7 @@ function broadcastWordleState(roomCode) {
     for (const id of Object.keys(room.players)) {
       allBoards[id] = {
         name:    room.players[id].name,
+        color:   room.players[id].color,
         guesses: w.guesses[id] || [],
         solved:  !!w.solved[id],
       };
@@ -193,16 +194,19 @@ io.on('connection', (socket) => {
   let isHost      = false;
 
   // ── Player joins a room ──────────────────────────────────────────────────
-  socket.on('join_room', ({ roomCode, playerName, password }) => {
+  socket.on('join_room', ({ roomCode, playerName, password, color }) => {
     roomCode = roomCode?.toUpperCase();
     const room = rooms[roomCode];
     if (!room)                  return socket.emit('error', { message: 'Room not found' });
     if (room.password !== password) return socket.emit('error', { message: 'Wrong password' });
     if (!playerName?.trim())    return socket.emit('error', { message: 'Name required' });
 
+    // Name color is chosen once, in the join form — fall back to the default if missing/invalid
+    const nameColor = /^#[0-9A-Fa-f]{6}$/.test(color || '') ? color : '#E8EAF0';
+
     currentRoom = roomCode;
     socket.join(roomCode);
-    room.players[socket.id] = { name: playerName.trim(), score: 0 };
+    room.players[socket.id] = { name: playerName.trim(), score: 0, color: nameColor };
 
     console.log(`${playerName} joined room ${roomCode}`);
     broadcastState(roomCode);

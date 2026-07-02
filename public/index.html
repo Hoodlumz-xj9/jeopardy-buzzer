@@ -148,6 +148,21 @@
     }
     input:focus { border-color: var(--blue-lt); }
 
+    .join-color-row { display: flex; align-items: center; gap: 10px; }
+    .join-color-row input[type="text"] { flex: 1; text-transform: uppercase; }
+    #joinColorPicker {
+      width: 44px;
+      height: 40px;
+      padding: 0;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      background: transparent;
+      flex-shrink: 0;
+    }
+    #joinColorPicker::-webkit-color-swatch-wrapper { padding: 0; }
+    #joinColorPicker::-webkit-color-swatch { border: none; border-radius: 6px; }
+
     .modal-actions {
       display: flex;
       gap: 12px;
@@ -186,7 +201,7 @@
 <body>
 
   <div class="logo">JEOPARDY!</div>
-  <div class="tagline">Buzzer System</div>
+  <div class="tagline">Welcome gamer</div>
 
   <div id="pageError" class="page-error"></div>
 
@@ -236,6 +251,12 @@
       <label for="playerName">Your name</label>
       <input id="playerName" type="text" placeholder="e.g. Alice" maxlength="30" />
 
+      <label>Name color</label>
+      <div class="join-color-row">
+        <input type="color" id="joinColorPicker" value="#e8eaf0" />
+        <input type="text" id="joinColorHex" value="#E8EAF0" maxlength="7" />
+      </div>
+
       <div id="joinError" class="error-banner"></div>
 
       <div class="modal-actions">
@@ -265,10 +286,31 @@
       document.getElementById('modeWordleBtn').classList.toggle('selected', mode === 'wordle');
     }
 
+    // ── Name color (Join modal) ────────────────────────────────────────────
+    const joinColorPicker = document.getElementById('joinColorPicker');
+    const joinColorHex    = document.getElementById('joinColorHex');
+
+    function normalizeHex(val) {
+      val = (val || '').trim();
+      if (!val.startsWith('#')) val = '#' + val;
+      if (/^#[0-9A-Fa-f]{3}$/.test(val)) val = '#' + [...val.slice(1)].map(c => c + c).join('');
+      return /^#[0-9A-Fa-f]{6}$/.test(val) ? val.toUpperCase() : null;
+    }
+
+    joinColorPicker.addEventListener('input', () => {
+      joinColorHex.value = joinColorPicker.value.toUpperCase();
+    });
+    joinColorHex.addEventListener('blur', () => {
+      const normalized = normalizeHex(joinColorHex.value);
+      joinColorHex.value = normalized || joinColorPicker.value.toUpperCase(); // revert on invalid input
+      if (normalized) joinColorPicker.value = normalized;
+    });
+
     // ── Modal helpers ─────────────────────────────────────────────────────
     function openModal(type) {
       document.getElementById(type + 'Modal').classList.add('open');
       if (type === 'create') selectMode('buzzer'); // reset selection each time the modal opens
+      if (type === 'join') { joinColorPicker.value = '#e8eaf0'; joinColorHex.value = '#E8EAF0'; }
       // Focus first input
       const first = document.querySelector('#' + type + 'Modal input');
       if (first) setTimeout(() => first.focus(), 50);
@@ -333,6 +375,7 @@
       const roomCode   = document.getElementById('joinCode').value.trim().toUpperCase();
       const password   = document.getElementById('joinPass').value.trim();
       const playerName = document.getElementById('playerName').value.trim();
+      const nameColor  = normalizeHex(joinColorHex.value) || '#E8EAF0';
 
       if (!roomCode)   return showError('joinError', 'Please enter the room code.');
       if (!password)   return showError('joinError', 'Please enter the password.');
@@ -352,6 +395,7 @@
         sessionStorage.setItem('roomCode',   roomCode);
         sessionStorage.setItem('roomPass',   password);
         sessionStorage.setItem('playerName', playerName);
+        sessionStorage.setItem('nameColor',  nameColor);
 
         window.location.href = '/play/' + roomCode;
       } catch (err) {
