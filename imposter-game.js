@@ -139,6 +139,7 @@ function broadcastImposterState(io, rooms, roomCode) {
     roundNumber: r.roundNumber,
     hostName: room.hostName,
     minPlayersNeeded: minPlayersNeeded(room),
+    serverNow: Date.now(),
     // Deliberately excluded: imposter, imposterName, mainPrompt, imposterPrompt.
   });
 

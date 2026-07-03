@@ -540,6 +540,12 @@
     });
 
     // ── Countdown timer ───────────────────────────────────────────────────
+    // Countdowns compare a server-computed endsAt timestamp against this client's
+    // own clock, which can drift from the server's (seen live as the timer
+    // starting several seconds short). clockOffsetMs corrects for that — it's
+    // refreshed from serverNow on every state update and added to Date.now()
+    // wherever "now" is needed for a countdown.
+    let clockOffsetMs = 0;
     let timerInterval = null;
 
     function startCountdown(endsAt) {
@@ -554,7 +560,7 @@
       const bar = document.getElementById('timerBar');
       let timesUpPlayed = false;
       timerInterval = setInterval(() => {
-        const remaining = Math.ceil((endsAt - Date.now()) / 1000);
+        const remaining = Math.ceil((endsAt - (Date.now() + clockOffsetMs)) / 1000);
 
         // Update bar — scaleX(1) = full, scaleX(0) = closed from both sides
         const ratio = Math.max(0, remaining / 60);
@@ -625,7 +631,9 @@
     });
 
     // ── Room state update ─────────────────────────────────────────────────
-    socket.on('room_state', ({ players, buzzOrder, answeringPlayer, timerEndsAt, hostName, mode }) => {
+    socket.on('room_state', ({ players, buzzOrder, answeringPlayer, timerEndsAt, hostName, mode, serverNow }) => {
+      if (serverNow) clockOffsetMs = serverNow - Date.now();
+
       // Show host name possessively in all three modes — apostrophe-only for names
       // already ending in s (e.g. "Chris' Sussy Bakas" not "Chris's Sussy Bakas").
       if (hostName) {
@@ -831,7 +839,7 @@
       clearInterval(imposterTimerInterval);
       const el = document.getElementById(elId);
       imposterTimerInterval = setInterval(() => {
-        const remaining = Math.ceil((endsAt - Date.now()) / 1000);
+        const remaining = Math.ceil((endsAt - (Date.now() + clockOffsetMs)) / 1000);
         if (remaining <= 0) {
           clearInterval(imposterTimerInterval);
           el.textContent = "Time's up!";
@@ -876,6 +884,7 @@
     };
 
     socket.on('imposter_room_state', (r) => {
+      if (r.serverNow) clockOffsetMs = r.serverNow - Date.now();
       lastImposterState = r;
       if (r.phase !== 'voting') myVoteFor = null;
 

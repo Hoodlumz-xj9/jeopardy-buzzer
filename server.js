@@ -60,6 +60,7 @@ function broadcastState(roomCode) {
     timerEndsAt:     room.timerEndsAt,
     hostName:        room.hostName,
     mode:            room.mode,
+    serverNow:       Date.now(),
   });
 }
 

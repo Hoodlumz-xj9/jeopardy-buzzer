@@ -565,6 +565,11 @@
     // ── Socket connection ─────────────────────────────────────────────────
     const socket = io();
     let lastState = null; // cached for score edits
+    // Countdowns compare a server-computed endsAt timestamp against this client's
+    // own clock, which can drift from the server's. clockOffsetMs corrects for
+    // that — refreshed from serverNow on every state update, added to Date.now()
+    // wherever "now" is needed for a countdown.
+    let clockOffsetMs = 0;
 
     socket.on('connect', () => {
       socket.emit('host_join', { roomCode });
@@ -585,7 +590,7 @@
 
       let timesUpPlayed = false;
       timerInterval = setInterval(() => {
-        const remaining = Math.ceil((endsAt - Date.now()) / 1000);
+        const remaining = Math.ceil((endsAt - (Date.now() + clockOffsetMs)) / 1000);
         if (remaining <= 0) {
           clearInterval(timerInterval);
           el.textContent = "Time's up!";
@@ -640,7 +645,8 @@
     // ── Room state update ─────────────────────────────────────────────────
     socket.on('room_state', (state) => {
       lastState = state;
-      const { players, buzzOrder, answeringPlayer, timerEndsAt, mode } = state;
+      const { players, buzzOrder, answeringPlayer, timerEndsAt, mode, serverNow } = state;
+      if (serverNow) clockOffsetMs = serverNow - Date.now();
 
       // Toggle which panel is visible based on the room's game mode (fixed at creation)
       document.getElementById('buzzerPanel').style.display   = mode === 'buzzer'   ? '' : 'none';
@@ -737,7 +743,7 @@
       clearInterval(imposterTimerInterval);
       const el = document.getElementById(elId);
       imposterTimerInterval = setInterval(() => {
-        const remaining = Math.ceil((endsAt - Date.now()) / 1000);
+        const remaining = Math.ceil((endsAt - (Date.now() + clockOffsetMs)) / 1000);
         if (remaining <= 0) {
           clearInterval(imposterTimerInterval);
           el.textContent = "Time's up!";
@@ -775,6 +781,7 @@
     };
 
     socket.on('imposter_room_state', (r) => {
+      if (r.serverNow) clockOffsetMs = r.serverNow - Date.now();
       imposterState = r;
 
       document.getElementById('imposterPhaseLabel').textContent = IMPOSTER_PHASE_LABELS[r.phase] || r.phase;
