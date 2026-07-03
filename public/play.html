@@ -620,12 +620,16 @@
 
     // ── Room state update ─────────────────────────────────────────────────
     socket.on('room_state', ({ players, buzzOrder, answeringPlayer, timerEndsAt, hostName, mode }) => {
-      // Show host name as "X's Jeopardy", "X's Hoodlumzle", or "X's Sus" depending on mode
-      // — apostrophe handling for names ending in s
+      // Show host name as "X's Jeopardy" / "X's Hoodlumzle" (apostrophe handling for
+      // names ending in s) — Sus mode uses its own phrasing instead of the possessive form.
       if (hostName) {
-        const brand  = mode === 'wordle' ? 'Hoodlumzle' : mode === 'imposter' ? 'Sus' : 'Jeopardy';
-        const suffix = hostName.endsWith('s') ? `’ ${brand}` : `’s ${brand}`;
-        document.getElementById('gameTitle').textContent = hostName + suffix;
+        if (mode === 'imposter') {
+          document.getElementById('gameTitle').textContent = `Welcome ${hostName} Sussy Bakas`;
+        } else {
+          const brand  = mode === 'wordle' ? 'Hoodlumzle' : 'Jeopardy';
+          const suffix = hostName.endsWith('s') ? `’ ${brand}` : `’s ${brand}`;
+          document.getElementById('gameTitle').textContent = hostName + suffix;
+        }
       }
 
       // Toggle which panel is visible based on the room's game mode (fixed at creation)
