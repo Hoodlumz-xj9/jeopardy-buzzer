@@ -108,8 +108,8 @@
       background: rgba(245, 197, 24, 0.12);
       border-left: 3px solid var(--gold);
     }
-    .score-name { font-weight: 600; }
-    .score-pts  { color: var(--gold); font-weight: 700; }
+    .score-name { font-weight: 600; font-size: 1.3rem; }
+    .score-pts  { color: var(--gold); font-weight: 700; font-size: 1.3rem; }
     .empty-msg  { padding: 16px; color: var(--muted); font-size: 0.9rem; text-align: center; }
 
     /* ── Buzz button ────────────────────────────────────────────── */
@@ -123,12 +123,12 @@
     }
 
     #buzzBtn {
-      width: 220px;
-      height: 220px;
+      width: 250px;
+      height: 250px;
       border-radius: 50%;
       background: radial-gradient(circle at 35% 35%, #f5d860, var(--gold) 60%, var(--gold) 100%);
       color: #0a0c14;
-      font-size: 2rem;
+      font-size: 2.3rem;
       font-weight: 900;
       letter-spacing: 3px;
       border: none;
@@ -148,10 +148,16 @@
       box-shadow: none;
       cursor: not-allowed;
     }
-    /* Orange when first — distinguishable by all color-blind types vs blue/gold */
-    #buzzBtn.first-buzz {
+    /* Orange once buzzed — distinguishable by all color-blind types vs gold */
+    #buzzBtn.buzzed {
       background: radial-gradient(circle at 35% 35%, #f0a060, var(--orange) 60%);
       color: #fff;
+      font-size: 1.25rem;
+      box-shadow: 0 0 30px rgba(230,126,34,0.4);
+      cursor: not-allowed;
+    }
+    /* Extra pulse for whoever got there first — bonus feedback, doesn't change color */
+    #buzzBtn.first-buzz {
       animation: pulseOrange 1s ease-in-out infinite;
     }
     @keyframes pulseOrange {
@@ -159,14 +165,13 @@
       50%       { box-shadow: 0 0 70px rgba(230,126,34,0.9); }
     }
 
-    /* Dimmed orange when buzzed but not first */
-    #buzzBtn.buzzed {
-      background: radial-gradient(circle at 35% 35%, #888, #555);
-      color: #ccc;
-      font-size: 1.1rem;
-      opacity: 0.75;
+    /* Green once the host selects you to answer — overrides buzzed/first-buzz */
+    #buzzBtn.selected {
+      background: radial-gradient(circle at 35% 35%, #6fdb8f, #27ae60 60%);
+      color: #fff;
+      font-size: 1.25rem;
+      box-shadow: 0 0 40px rgba(39,174,96,0.45);
       cursor: not-allowed;
-      box-shadow: none;
     }
 
     .buzz-hint {
@@ -266,7 +271,7 @@
       margin-bottom: 8px;
     }
     #countdown {
-      font-size: 3.5rem;
+      font-size: 5rem;
       font-weight: 900;
       color: var(--text);
       line-height: 1;
@@ -665,22 +670,25 @@
 
       const iInBuzzOrder = buzzOrder.includes(socket.id);
       const iFirst       = buzzOrder[0] === socket.id;
+      const iAnswering   = answeringPlayer === socket.id;
 
-      if (iFirst) {
-        btn.classList.add('first-buzz');
-        btn.classList.remove('buzzed');
-        btn.textContent = 'BUZZED!!';
-        btn.disabled    = false;
-        btn.onclick     = null;
-      } else if (iInBuzzOrder || answeringPlayer) {
-        btn.classList.remove('first-buzz');
-        btn.classList.add('buzzed');
+      btn.classList.remove('first-buzz', 'buzzed', 'selected');
+
+      if (iAnswering) {
+        // Host has selected you — takes priority over the plain buzzed look
+        btn.classList.add('selected');
         btn.textContent = 'BUZZED';
         btn.disabled    = true;
         btn.onclick     = null;
+      } else if (iInBuzzOrder) {
+        btn.classList.add('buzzed');
+        if (iFirst) btn.classList.add('first-buzz'); // bonus pulse for the leader
+        btn.textContent = iFirst ? 'BUZZED!!' : 'BUZZED';
+        btn.disabled    = true;
+        btn.onclick     = null;
       } else {
-        // Host reset — back to ready state
-        btn.classList.remove('first-buzz', 'buzzed');
+        // Haven't buzzed yet — still allowed even while someone else is answering,
+        // so you're ready and queued the moment the host resets or unselects.
         btn.textContent = 'BUZZ';
         btn.disabled    = false;
         btn.onclick     = buzz;
