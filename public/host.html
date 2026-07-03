@@ -244,6 +244,9 @@
     .btn-reset-players { background: #e67e22; color: #fff; padding: 10px 18px; }
     .btn-reset-players:hover { filter: brightness(1.15); }
 
+    /* grid-template-columns is overridden from JS (applyHostTileLayout) based on the
+       active word's length, so a long word widens every card instead of overflowing
+       it — --tile-size / --tile-font come from the same computation. */
     .wordle-boards {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -254,6 +257,7 @@
       border: 2px solid #3a4060;
       border-radius: var(--radius);
       padding: 14px;
+      overflow: hidden;
     }
     .wordle-player-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
     .solved-badge {
@@ -265,15 +269,15 @@
       padding: 2px 8px;
       border-radius: 10px;
     }
-    .wordle-row { display: flex; gap: 4px; margin-bottom: 4px; }
+    .wordle-row { display: flex; gap: 4px; margin-bottom: 4px; overflow-x: auto; }
     .wordle-tile {
-      width: 30px;
-      height: 30px;
+      width: var(--tile-size, 30px);
+      height: var(--tile-size, 30px);
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 800;
-      font-size: 0.9rem;
+      font-size: var(--tile-font, 0.9rem);
       color: #fff;
       border-radius: 4px;
       background: #2a3050;
@@ -668,7 +672,32 @@
       socket.emit('wordle_reset_players', { roomCode });
     }
 
+    // Widens every player card's minimum grid width (and shrinks tile size only once
+    // that's not enough) so a long word never overlaps a card's edge or another
+    // player's card next to it. Mirrors applyTileLayout on the player side.
+    function applyHostTileLayout(len) {
+      const boardsEl = document.getElementById('hostWordleBoards');
+      if (!len) {
+        boardsEl.style.gridTemplateColumns = '';
+        boardsEl.style.removeProperty('--tile-size');
+        boardsEl.style.removeProperty('--tile-font');
+        return;
+      }
+      const gap = 4, padding = 32, naturalTileSize = 30; // 14px padding + 2px border, each side
+      const naturalCardWidth = len * naturalTileSize + (len - 1) * gap + padding;
+      const minColWidth = Math.max(220, Math.min(naturalCardWidth, 420)); // cap so one huge word doesn't force a single column
+
+      boardsEl.style.gridTemplateColumns = `repeat(auto-fill, minmax(${minColWidth}px, 1fr))`;
+
+      const availableForTiles = minColWidth - padding - gap * (len - 1);
+      const tileSize = Math.max(14, Math.min(naturalTileSize, Math.floor(availableForTiles / len)));
+      boardsEl.style.setProperty('--tile-size', tileSize + 'px');
+      boardsEl.style.setProperty('--tile-font', Math.max(9, Math.round(tileSize * 0.45)) + 'px');
+    }
+
     socket.on('wordle_state', (state) => {
+      applyHostTileLayout(state.wordLength);
+
       document.getElementById('wordlePrePush').style.display  = state.pushed ? 'none' : '';
       document.getElementById('wordlePostPush').style.display = state.pushed ? '' : 'none';
       if (state.pushed) {

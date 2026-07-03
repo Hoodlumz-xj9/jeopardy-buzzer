@@ -280,24 +280,28 @@
     .timesup { font-size: 1.4rem; font-weight: 700; color: var(--danger); }
 
     /* ── Wordle mode ────────────────────────────────────────────── */
+    /* --card-width / --tile-size / --tile-font are set from JS based on the active
+       word's length (applyTileLayout) — long words grow the card first (up to the
+       viewport width), and only shrink tiles once that's exhausted, so short words
+       look exactly as before and long ones never overflow their box. */
     .wordle-card {
       width: 100%;
-      max-width: 480px;
+      max-width: var(--card-width, 480px);
       background: var(--surface);
       border: 2px solid #3a4060;
       border-radius: var(--radius);
       padding: 20px;
       text-align: center;
     }
-    .wordle-row { display: flex; gap: 5px; justify-content: center; margin-bottom: 5px; }
+    .wordle-row { display: flex; gap: 5px; justify-content: center; margin-bottom: 5px; overflow-x: auto; }
     .wordle-tile {
-      width: 42px;
-      height: 42px;
+      width: var(--tile-size, 42px);
+      height: var(--tile-size, 42px);
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 800;
-      font-size: 1.2rem;
+      font-size: var(--tile-font, 1.2rem);
       color: #fff;
       border: 2px solid #2a3050;
       border-radius: 4px;
@@ -338,7 +342,7 @@
       border-radius: var(--radius);
       padding: 14px;
       width: 100%;
-      max-width: 480px;
+      max-width: var(--card-width, 480px);
     }
     .wordle-player-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 8px; }
 
@@ -620,15 +624,15 @@
 
     // ── Room state update ─────────────────────────────────────────────────
     socket.on('room_state', ({ players, buzzOrder, answeringPlayer, timerEndsAt, hostName, mode }) => {
-      // Show host name as "X's Jeopardy" / "X's Hoodlumzle" (apostrophe handling for
-      // names ending in s) — Sus mode uses its own phrasing instead of the possessive form.
+      // Show host name possessively in all three modes — apostrophe-only for names
+      // already ending in s (e.g. "Chris' Sussy Bakas" not "Chris's Sussy Bakas").
       if (hostName) {
+        const possessive = hostName + (hostName.endsWith('s') ? '’' : '’s');
         if (mode === 'imposter') {
-          document.getElementById('gameTitle').textContent = `Welcome ${hostName} Sussy Bakas`;
+          document.getElementById('gameTitle').textContent = `Welcome ${possessive} Sussy Bakas`;
         } else {
-          const brand  = mode === 'wordle' ? 'Hoodlumzle' : 'Jeopardy';
-          const suffix = hostName.endsWith('s') ? `’ ${brand}` : `’s ${brand}`;
-          document.getElementById('gameTitle').textContent = hostName + suffix;
+          const brand = mode === 'wordle' ? 'Hoodlumzle' : 'Jeopardy';
+          document.getElementById('gameTitle').textContent = `${possessive} ${brand}`;
         }
       }
 
@@ -694,9 +698,34 @@
       }).join('');
     })();
 
+    // Sizes the tile grid to the active word's length: grows the card first (up to
+    // the viewport width) so a long word never overflows, only shrinking tile size
+    // once the viewport itself is the limit. No-op (falls back to the CSS defaults)
+    // when there's no active word.
+    function applyTileLayout(len) {
+      const panel = document.getElementById('wordlePanel');
+      if (!len) {
+        panel.style.removeProperty('--card-width');
+        panel.style.removeProperty('--tile-size');
+        panel.style.removeProperty('--tile-font');
+        return;
+      }
+      const gap = 5, padding = 44, naturalTileSize = 42; // 20px padding + 2px border, each side
+      const naturalCardWidth = len * naturalTileSize + (len - 1) * gap + padding;
+      const viewportMax = window.innerWidth - 32; // leave the page's existing side margins
+      const cardWidth = Math.min(naturalCardWidth, viewportMax);
+      panel.style.setProperty('--card-width', cardWidth + 'px');
+
+      const availableForTiles = cardWidth - padding - gap * (len - 1);
+      const tileSize = Math.max(20, Math.min(naturalTileSize, Math.floor(availableForTiles / len)));
+      panel.style.setProperty('--tile-size', tileSize + 'px');
+      panel.style.setProperty('--tile-font', Math.max(11, Math.round(tileSize * 0.45)) + 'px');
+    }
+
     socket.on('wordle_state', (state) => {
       lastWordleState = state;
       myWordLength     = state.wordLength;
+      applyTileLayout(myWordLength);
 
       document.getElementById('wordleWaiting').style.display = state.pushed ? 'none' : '';
       document.getElementById('wordleActive').style.display  = state.pushed ? '' : 'none';
