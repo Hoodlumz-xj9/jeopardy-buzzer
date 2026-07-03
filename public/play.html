@@ -287,6 +287,7 @@
     .wordle-card {
       width: 100%;
       max-width: var(--card-width, 480px);
+      margin: 0 auto;
       background: var(--surface);
       border: 2px solid #3a4060;
       border-radius: var(--radius);
@@ -312,7 +313,7 @@
     .wordle-tile.present { background: var(--blue-lt); color: #fff; border-color: var(--blue-lt); }
     .wordle-tile.absent  { background: #2a3050; color: var(--muted); border-color: #2a3050; }
 
-    .wordle-keyboard { width: 100%; max-width: 480px; }
+    .wordle-keyboard { width: 100%; max-width: 480px; margin: 0 auto; }
     .kb-row { display: flex; gap: 6px; justify-content: center; margin-bottom: 6px; }
     .kb-key {
       min-width: 30px;
@@ -343,6 +344,7 @@
       padding: 14px;
       width: 100%;
       max-width: var(--card-width, 480px);
+      margin: 0 auto;
     }
     .wordle-player-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 8px; }
 
@@ -710,10 +712,12 @@
         panel.style.removeProperty('--tile-font');
         return;
       }
-      const gap = 5, padding = 44, naturalTileSize = 42; // 20px padding + 2px border, each side
+      const gap = 5, padding = 44, naturalTileSize = 42, defaultCardWidth = 480; // 20px padding + 2px border, each side
       const naturalCardWidth = len * naturalTileSize + (len - 1) * gap + padding;
       const viewportMax = window.innerWidth - 32; // leave the page's existing side margins
-      const cardWidth = Math.min(naturalCardWidth, viewportMax);
+      // Floor at the original default so short words look exactly as before; only
+      // grow past it (up to the viewport) for words that actually need more room.
+      const cardWidth = Math.max(defaultCardWidth, Math.min(naturalCardWidth, viewportMax));
       panel.style.setProperty('--card-width', cardWidth + 'px');
 
       const availableForTiles = cardWidth - padding - gap * (len - 1);
