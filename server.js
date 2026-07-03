@@ -6,6 +6,7 @@ const express = require('express');
 const http    = require('http');
 const { Server } = require('socket.io');
 const path    = require('path');
+const imposterGame = require('./imposter-game');
 
 const app    = express();
 const server = http.createServer(app);
@@ -19,7 +20,7 @@ app.use(express.json());
 // Room shape:
 // {
 //   code, password, hostName,
-//   mode: 'buzzer' | 'wordle',     // set at creation, never changes
+//   mode: 'buzzer' | 'wordle' | 'imposter', // set at creation, never changes
 //   hostSocketId: socketId | null, // the host's current socket — also used to authorize host-only actions
 //   players: { socketId: { name, score, color } },  // color is a "#RRGGBB" hex string
 //   buzzOrder: [socketId, ...],   // oldest first
@@ -30,7 +31,8 @@ app.use(express.json());
 //     pushed: bool,
 //     guesses: { socketId: [ { guess, result: ["correct"|"present"|"absent", ...] } ] },
 //     solved: { socketId: true },
-//   }
+//   },
+//   imposterSettings / imposterRound: present only when mode === 'imposter' — see imposter-game.js
 // }
 const rooms = {};
 
@@ -148,7 +150,7 @@ app.post('/create-room', (req, res) => {
     code,
     password,
     hostName,
-    mode:            mode === 'wordle' ? 'wordle' : 'buzzer',
+    mode:            mode === 'wordle' ? 'wordle' : mode === 'imposter' ? 'imposter' : 'buzzer',
     hostSocketId:    null,
     players:         {},
     buzzOrder:       [],
@@ -157,6 +159,9 @@ app.post('/create-room', (req, res) => {
   };
   if (rooms[code].mode === 'wordle') {
     rooms[code].wordle = { word: null, pushed: false, guesses: {}, solved: {} };
+  }
+  if (rooms[code].mode === 'imposter') {
+    Object.assign(rooms[code], imposterGame.createImposterRoomState());
   }
 
   console.log(`Room created: ${code} by ${hostName} (${rooms[code].mode} mode)`);
@@ -210,7 +215,8 @@ io.on('connection', (socket) => {
 
     console.log(`${playerName} joined room ${roomCode}`);
     broadcastState(roomCode);
-    if (room.mode === 'wordle') broadcastWordleState(roomCode);
+    if (room.mode === 'wordle')   broadcastWordleState(roomCode);
+    if (room.mode === 'imposter') imposterGame.broadcastImposterState(io, rooms, roomCode);
   });
 
   // ── Host socket identifies itself (no password re-check — room was already created) ──
@@ -224,8 +230,12 @@ io.on('connection', (socket) => {
     room.hostSocketId = socket.id; // self-heals on host page refresh — new socket just overwrites the old id
     socket.join(roomCode);
     broadcastState(roomCode);
-    if (room.mode === 'wordle') broadcastWordleState(roomCode);
+    if (room.mode === 'wordle')   broadcastWordleState(roomCode);
+    if (room.mode === 'imposter') imposterGame.broadcastImposterState(io, rooms, roomCode);
   });
+
+  // ── Sus (Imposter) mode — all handlers live in imposter-game.js ─────────
+  imposterGame.registerSocketHandlers(io, socket, rooms);
 
   // ── Player buzzes ────────────────────────────────────────────────────────
   socket.on('buzz', ({ roomCode }) => {
@@ -279,6 +289,7 @@ io.on('connection', (socket) => {
 
     room.players[socketId].score = parseInt(newScore, 10) || 0;
     broadcastState(roomCode);
+    if (room.mode === 'imposter') imposterGame.broadcastImposterState(io, rooms, roomCode);
   });
 
   // ── Host pushes the secret word live — starts a fresh round ─────────────
@@ -359,6 +370,7 @@ io.on('connection', (socket) => {
         delete room.wordle.guesses[socket.id];
         delete room.wordle.solved[socket.id];
       }
+      if (room.mode === 'imposter') imposterGame.handleDisconnect(io, rooms, currentRoom, socket.id);
       broadcastState(currentRoom);
       if (room.mode === 'wordle') broadcastWordleState(currentRoom);
     }
@@ -368,6 +380,7 @@ io.on('connection', (socket) => {
     if (!sockets || sockets.size === 0) {
       console.log(`Room ${currentRoom} deleted (all sockets gone)`);
       delete rooms[currentRoom];
+      imposterGame.clearRoomTimer(currentRoom); // harmless no-op for non-imposter rooms
     }
   });
 });

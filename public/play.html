@@ -341,6 +341,51 @@
       max-width: 480px;
     }
     .wordle-player-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 8px; }
+
+    /* ── Sus (Imposter) mode ────────────────────────────────────── */
+    .imposter-phase-label {
+      font-size: 0.8rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 1px; text-align: center; margin-bottom: 4px;
+    }
+    .imposter-round-label { font-size: 0.75rem; color: var(--muted); text-align: center; margin-bottom: 14px; }
+
+    .prompt-form label {
+      display: block; font-size: 0.75rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.5px; margin-bottom: 6px; margin-top: 14px; text-align: left;
+    }
+    .prompt-form label:first-of-type { margin-top: 0; }
+    .prompt-form textarea {
+      width: 100%; background: #0a0c14; border: 1px solid #3e3b70; border-radius: 6px;
+      color: var(--text); font-size: 0.95rem; padding: 10px 12px; outline: none;
+      font-family: inherit; resize: vertical; min-height: 60px;
+    }
+    .prompt-form textarea:focus { border-color: var(--blue-lt); }
+    .btn-submit-prompts { background: var(--gold); color: #0a0c14; width: 100%; padding: 12px; font-size: 1rem; margin-top: 16px; }
+    .btn-submit-prompts:hover:not(:disabled) { filter: brightness(1.1); }
+
+    .my-prompt-display { font-size: 1.3rem; font-weight: 700; line-height: 1.4; padding: 10px 0; }
+    .discuss-countdown { font-size: 2rem; font-weight: 900; color: var(--gold); margin-top: 12px; }
+
+    .vote-card-list { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 480px; align-items: center; }
+    .vote-card {
+      background: var(--surface); border: 2px solid #3a4060; border-radius: var(--radius);
+      padding: 16px; font-size: 1.05rem; font-weight: 700; text-align: center;
+      cursor: pointer; transition: border-color 0.15s, background 0.15s;
+      width: 100%; -webkit-tap-highlight-color: transparent;
+    }
+    .vote-card:hover { border-color: var(--blue-lt); }
+    .vote-card.voted-for { border-color: var(--gold); background: rgba(245,197,24,0.1); }
+    .vote-status { text-align: center; color: var(--muted); font-size: 0.9rem; }
+
+    .results-caption { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; text-align: center; }
+    .results-imposter-name { font-size: 1.6rem; font-weight: 900; color: var(--orange); text-align: center; margin: 6px 0 4px; }
+    .results-my-outcome { text-align: center; font-size: 1.05rem; font-weight: 700; padding: 10px; border-radius: 8px; margin-top: 12px; }
+    .results-my-outcome.correct { background: rgba(245,197,24,0.12); color: var(--gold); }
+    .results-my-outcome.wrong   { background: rgba(37,99,201,0.15); color: var(--blue-lt); }
+    .results-prompts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+    .results-prompt-card { background: #0a0c14; border: 1px solid #3e3b70; border-radius: 8px; padding: 10px; }
+    .results-prompt-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; margin-bottom: 4px; }
+    .results-prompt-text { font-size: 0.85rem; }
   </style>
 </head>
 <body>
@@ -397,6 +442,68 @@
     <div id="solvedSection" style="display:none">
       <div class="buzz-order-title" style="border-radius:10px 10px 0 0;">Solved</div>
       <div id="solvedList"></div>
+    </div>
+  </div>
+
+  <!-- Sus (Imposter) panel -->
+  <div id="imposterPanel" style="display:none">
+
+    <!-- Scoreboard -->
+    <div class="scoreboard">
+      <div class="scoreboard-title">Scoreboard</div>
+      <div id="imposterScoreList"><div class="empty-msg">Waiting for players…</div></div>
+    </div>
+
+    <div class="wordle-card">
+      <div class="imposter-phase-label" id="imposterPhaseLabel">Waiting</div>
+      <div class="imposter-round-label" id="imposterRoundLabel">Round 1</div>
+
+      <!-- Waiting for host to start -->
+      <div id="imposterWaitingView">Waiting for the host to start the round…</div>
+
+      <!-- Prompt-setting: this player is the setter -->
+      <div id="imposterPromptFormView" style="display:none" class="prompt-form">
+        <label>Main Prompt (everyone else sees this)</label>
+        <textarea id="mainPromptInput" maxlength="300" placeholder="e.g. Describe your dream vacation"></textarea>
+        <label>Imposter Prompt (one random player sees this instead)</label>
+        <textarea id="imposterPromptInput" maxlength="300" placeholder="e.g. Describe your worst vacation"></textarea>
+        <button class="btn-submit-prompts" onclick="submitImposterPrompts()">Submit Prompts</button>
+      </div>
+
+      <!-- Prompt-setting: waiting for someone else -->
+      <div id="imposterWaitingForPromptsView" style="display:none"></div>
+
+      <!-- Discussing -->
+      <div id="imposterDiscussView" style="display:none">
+        <div class="my-prompt-display" id="myPromptText"></div>
+        <div class="discuss-countdown" id="discussCountdownPlayer"></div>
+      </div>
+    </div>
+
+    <!-- Voting -->
+    <div id="imposterVoteView" style="display:none" class="vote-card-list">
+      <div class="discuss-countdown" id="votingCountdownPlayer" style="text-align:center;"></div>
+      <div id="voteCardsList" style="width:100%; display:flex; flex-direction:column; gap:10px;"></div>
+      <div class="vote-status" id="voteStatusText"></div>
+    </div>
+
+    <!-- Results -->
+    <div id="imposterResultsPlayerView" style="display:none">
+      <div class="wordle-card">
+        <div class="results-caption">The Imposter Was</div>
+        <div class="results-imposter-name" id="resultsImposterNamePlayer"></div>
+        <div class="results-my-outcome" id="myOutcomeText"></div>
+        <div class="results-prompts">
+          <div class="results-prompt-card">
+            <div class="results-prompt-label">Main Prompt</div>
+            <div class="results-prompt-text" id="resultsMainPromptPlayer"></div>
+          </div>
+          <div class="results-prompt-card">
+            <div class="results-prompt-label">Imposter Prompt</div>
+            <div class="results-prompt-text" id="resultsImposterPromptPlayer"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -513,17 +620,18 @@
 
     // ── Room state update ─────────────────────────────────────────────────
     socket.on('room_state', ({ players, buzzOrder, answeringPlayer, timerEndsAt, hostName, mode }) => {
-      // Show host name as "X's Jeopardy" or "X's Hoodlumzle" depending on mode
+      // Show host name as "X's Jeopardy", "X's Hoodlumzle", or "X's Sus" depending on mode
       // — apostrophe handling for names ending in s
       if (hostName) {
-        const brand  = mode === 'wordle' ? 'Hoodlumzle' : 'Jeopardy';
+        const brand  = mode === 'wordle' ? 'Hoodlumzle' : mode === 'imposter' ? 'Sus' : 'Jeopardy';
         const suffix = hostName.endsWith('s') ? `’ ${brand}` : `’s ${brand}`;
         document.getElementById('gameTitle').textContent = hostName + suffix;
       }
 
       // Toggle which panel is visible based on the room's game mode (fixed at creation)
-      document.getElementById('buzzerPanel').style.display = mode === 'wordle' ? 'none' : '';
-      document.getElementById('wordlePanel').style.display = mode === 'wordle' ? '' : 'none';
+      document.getElementById('buzzerPanel').style.display   = mode === 'buzzer'   ? '' : 'none';
+      document.getElementById('wordlePanel').style.display   = mode === 'wordle'   ? '' : 'none';
+      document.getElementById('imposterPanel').style.display = mode === 'imposter' ? '' : 'none';
 
       renderScoreboard(players, answeringPlayer);
       renderBuzzOrder(buzzOrder, players);
@@ -676,6 +784,140 @@
         submitGuess();
       }
     });
+
+    // ── Sus (Imposter) mode ──────────────────────────────────────────────
+    let lastImposterState     = null;
+    let myVoteFor              = null; // client-tracked, cosmetic "vote cast" confirmation
+    let imposterTimerInterval = null;
+
+    function startImposterCountdown(endsAt, elId) {
+      clearInterval(imposterTimerInterval);
+      const el = document.getElementById(elId);
+      imposterTimerInterval = setInterval(() => {
+        const remaining = Math.ceil((endsAt - Date.now()) / 1000);
+        if (remaining <= 0) {
+          clearInterval(imposterTimerInterval);
+          el.textContent = "Time's up!";
+          return;
+        }
+        el.textContent = remaining + 's';
+      }, 250);
+    }
+    function stopImposterCountdown() { clearInterval(imposterTimerInterval); }
+
+    function submitImposterPrompts() {
+      const mainPrompt     = document.getElementById('mainPromptInput').value.trim();
+      const imposterPrompt = document.getElementById('imposterPromptInput').value.trim();
+      if (!mainPrompt || !imposterPrompt) return;
+      socket.emit('submit_prompts', { roomCode, mainPrompt, imposterPrompt });
+    }
+
+    function castVote(votedForSocketId) {
+      myVoteFor = votedForSocketId;
+      socket.emit('cast_vote', { roomCode, votedForSocketId });
+      if (lastImposterState) renderVoteCards(lastImposterState); // immediate feedback, don't wait for the round trip
+    }
+
+    function renderVoteCards(r) {
+      const el = document.getElementById('voteCardsList');
+      const candidates = r.eligiblePlayerIds.filter(id => id !== socket.id);
+      if (candidates.length === 0) {
+        el.innerHTML = '<div class="empty-msg">No other players to vote for</div>';
+      } else {
+        el.innerHTML = candidates.map(id => {
+          const p = r.players[id];
+          return `<div class="vote-card ${myVoteFor === id ? 'voted-for' : ''}" onclick="castVote('${esc(id)}')">${esc(p?.name || 'Unknown')}</div>`;
+        }).join('');
+      }
+      document.getElementById('voteStatusText').textContent =
+        myVoteFor ? 'Vote cast — waiting for others…' : 'Tap a player to vote';
+    }
+
+    const IMPOSTER_PHASE_LABELS = {
+      waiting: 'Waiting to Start', prompt_setting: 'Setting Prompts',
+      discussing: 'Discussing', voting: 'Voting', results: 'Results',
+    };
+
+    socket.on('imposter_room_state', (r) => {
+      lastImposterState = r;
+      if (r.phase !== 'voting') myVoteFor = null;
+
+      document.getElementById('imposterPhaseLabel').textContent = IMPOSTER_PHASE_LABELS[r.phase] || r.phase;
+      document.getElementById('imposterRoundLabel').textContent = 'Round ' + r.roundNumber;
+
+      // A player who joined mid-round isn't part of it until the next one starts —
+      // they get a distinct waiting message instead of whatever phase view is active.
+      const iAmEligible  = r.eligiblePlayerIds.includes(socket.id);
+      const midRoundWait = !iAmEligible && r.phase !== 'waiting' && r.phase !== 'results';
+
+      document.getElementById('imposterWaitingView').style.display           = (r.phase === 'waiting' || midRoundWait) ? '' : 'none';
+      document.getElementById('imposterPromptFormView').style.display        = (!midRoundWait && r.phase === 'prompt_setting' && r.promptSetter === socket.id) ? '' : 'none';
+      document.getElementById('imposterWaitingForPromptsView').style.display = (!midRoundWait && r.phase === 'prompt_setting' && r.promptSetter !== socket.id) ? '' : 'none';
+      document.getElementById('imposterDiscussView').style.display           = (!midRoundWait && r.phase === 'discussing') ? '' : 'none';
+      document.getElementById('imposterVoteView').style.display              = (!midRoundWait && r.phase === 'voting') ? '' : 'none';
+      document.getElementById('imposterResultsPlayerView').style.display     = (r.phase === 'results') ? '' : 'none';
+
+      document.getElementById('imposterWaitingView').textContent = midRoundWait
+        ? 'You’ll join in the next round…'
+        : 'Waiting for the host to start the round…';
+
+      if (!midRoundWait && r.phase === 'prompt_setting' && r.promptSetter !== socket.id) {
+        document.getElementById('imposterWaitingForPromptsView').textContent =
+          `Waiting for ${r.promptSetterName} to write this round's prompts…`;
+      }
+
+      if (!midRoundWait && r.phase === 'discussing' && r.discussionEndsAt) {
+        startImposterCountdown(r.discussionEndsAt, 'discussCountdownPlayer');
+      } else if (!midRoundWait && r.phase === 'voting') {
+        if (r.votingEndsAt) startImposterCountdown(r.votingEndsAt, 'votingCountdownPlayer');
+        renderVoteCards(r);
+      } else {
+        stopImposterCountdown();
+      }
+
+      renderImposterScoreboard(r.players);
+    });
+
+    socket.on('imposter_your_prompt', ({ prompt }) => {
+      document.getElementById('myPromptText').textContent = prompt;
+    });
+
+    socket.on('imposter_results', (results) => {
+      document.getElementById('resultsImposterNamePlayer').textContent = results.imposterName;
+      document.getElementById('resultsMainPromptPlayer').textContent     = results.mainPrompt;
+      document.getElementById('resultsImposterPromptPlayer').textContent = results.imposterPrompt;
+
+      const myVote    = results.voteBreakdown.find(v => v.voterId === socket.id);
+      const outcomeEl = document.getElementById('myOutcomeText');
+      if (!myVote) {
+        outcomeEl.textContent = '';
+        outcomeEl.className   = 'results-my-outcome';
+      } else if (myVote.votedFor === results.imposter) {
+        outcomeEl.textContent = 'You guessed correctly!';
+        outcomeEl.className   = 'results-my-outcome correct';
+      } else {
+        outcomeEl.textContent = 'You did not guess correctly.';
+        outcomeEl.className   = 'results-my-outcome wrong';
+      }
+    });
+
+    function renderImposterScoreboard(players) {
+      const el = document.getElementById('imposterScoreList');
+      const entries = Object.entries(players || {});
+      if (entries.length === 0) {
+        el.innerHTML = '<div class="empty-msg">No players yet</div>';
+        return;
+      }
+      entries.sort((a, b) => b[1].score - a[1].score);
+      el.innerHTML = entries.map(([id, p]) => {
+        const isMe = id === socket.id;
+        const tag  = isMe ? ' <em style="font-size:0.75rem;color:var(--muted)">(you)</em>' : '';
+        return `<div class="score-row${isMe ? ' me' : ''}">
+          <span class="score-name"><span style="color:${safeColor(p.color)}">${esc(p.name)}</span>${tag}</span>
+          <span class="score-pts">${p.score} pts</span>
+        </div>`;
+      }).join('');
+    }
 
     // ── Render helpers ────────────────────────────────────────────────────
 

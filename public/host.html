@@ -282,6 +282,55 @@
     .wordle-tile.correct { background: var(--gold); color: #0a0c14; }
     .wordle-tile.present { background: var(--blue-lt); color: #fff; }
     .wordle-tile.absent  { background: #2a3050; color: var(--muted); }
+
+    /* ── Sus (Imposter) mode ────────────────────────────────────── */
+    .imposter-phase-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    .imposter-phase-label { font-size: 0.95rem; color: var(--gold); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+    .imposter-round-label { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
+    .start-round-caption { font-size: 0.8rem; color: var(--muted); margin-top: 10px; text-align: center; }
+
+    .btn-start  { background: var(--gold); color: #0a0c14; padding: 12px 24px; font-size: 0.95rem; }
+    .btn-start:hover:not(:disabled)  { filter: brightness(1.1); }
+    .btn-next   { background: var(--gold); color: #0a0c14; padding: 12px 24px; font-size: 0.95rem; }
+    .btn-next:hover  { filter: brightness(1.1); }
+    .btn-skip   { background: var(--blue-lt); color: #fff; }
+    .btn-skip:hover  { filter: brightness(1.2); }
+    .btn-cancel { background: var(--danger); color: #fff; }
+    .btn-cancel:hover { filter: brightness(1.1); }
+
+    .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .settings-field label {
+      display: block; font-size: 0.72rem; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
+    }
+    .settings-field input[type="number"], .settings-field select {
+      width: 100%; background: #0a0c14; border: 1px solid #3e3b70; border-radius: 6px;
+      color: var(--text); font-size: 0.95rem; padding: 8px 10px; outline: none;
+    }
+    .settings-field input:focus, .settings-field select:focus { border-color: var(--blue-lt); }
+    .settings-field input:disabled, .settings-field select:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .prompt-breakdown-row {
+      display: flex; justify-content: space-between; gap: 12px;
+      padding: 8px 16px; border-bottom: 1px solid #1a1e30; font-size: 0.88rem;
+    }
+    .prompt-breakdown-row:last-child { border-bottom: none; }
+    .prompt-breakdown-row.is-imposter { background: rgba(230,126,34,0.12); border-left: 3px solid #e67e22; }
+    .prompt-breakdown-name { font-weight: 600; flex-shrink: 0; }
+    .prompt-breakdown-text { color: var(--muted); text-align: right; }
+
+    .vote-progress { font-size: 1.3rem; font-weight: 800; color: var(--gold); text-align: center; }
+
+    .results-imposter-reveal { text-align: center; padding: 6px; }
+    .results-imposter-name { font-size: 1.6rem; font-weight: 900; color: #e67e22; margin-top: 4px; }
+    .results-prompts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+    .results-prompt-card { background: #0a0c14; border: 1px solid #3e3b70; border-radius: 8px; padding: 12px; }
+    .results-prompt-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+    .results-prompt-text { font-size: 0.95rem; }
+
+    .vote-breakdown-row { display: flex; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid #1a1e30; font-size: 0.9rem; }
+    .vote-breakdown-row:last-child { border-bottom: none; }
+    .vote-breakdown-row.correct { border-left: 3px solid var(--gold); background: rgba(245,197,24,0.06); }
   </style>
 </head>
 <body>
@@ -354,6 +403,127 @@
       <div class="section-title">Player Boards</div>
       <div class="wordle-boards" id="hostWordleBoards">
         <div class="empty-msg">Waiting for players to join…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sus (Imposter) panel -->
+  <div id="imposterPanel" style="display:none">
+
+    <!-- Phase + round indicator, Start Round -->
+    <div class="section">
+      <div class="room-card">
+        <div class="imposter-phase-bar">
+          <div>
+            <div class="imposter-phase-label" id="imposterPhaseLabel">Waiting</div>
+            <div class="imposter-round-label" id="imposterRoundLabel">Round 1</div>
+          </div>
+          <div id="imposterWaitingControls">
+            <button class="btn-start" id="startRoundBtn" onclick="startImposterRound()">Start Round</button>
+          </div>
+        </div>
+        <div class="start-round-caption" id="startRoundCaption"></div>
+      </div>
+    </div>
+
+    <!-- Prompt-setting phase -->
+    <div class="section" id="imposterPromptSettingView" style="display:none">
+      <div class="room-card">
+        <div id="promptSettingStatus"></div>
+        <div style="margin-top:12px;">
+          <button class="btn-cancel" onclick="cancelImposterRound()">Cancel Round</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Discussing phase -->
+    <div class="section" id="imposterDiscussingView" style="display:none">
+      <div class="room-card">
+        <div class="wordle-active-bar">
+          <div class="wordle-len-confirm" id="discussCountdown"></div>
+          <button class="btn-skip" onclick="skipToVoting()">Skip to Voting</button>
+        </div>
+      </div>
+      <div class="section-title" style="margin-top:14px;">Who Has Which Prompt (host only)</div>
+      <div class="scoreboard" id="hostPromptBreakdown"></div>
+    </div>
+
+    <!-- Voting phase -->
+    <div class="section" id="imposterVotingView" style="display:none">
+      <div class="room-card">
+        <div class="vote-progress" id="voteProgress"></div>
+        <div class="wordle-len-confirm" id="votingCountdown" style="text-align:center; margin-top:8px;"></div>
+      </div>
+    </div>
+
+    <!-- Results phase -->
+    <div class="section" id="imposterResultsView" style="display:none">
+      <div class="room-card">
+        <div class="results-imposter-reveal">
+          <div class="section-title">The Imposter Was</div>
+          <div class="results-imposter-name" id="resultsImposterName"></div>
+        </div>
+        <div class="results-prompts">
+          <div class="results-prompt-card">
+            <div class="results-prompt-label">Main Prompt</div>
+            <div class="results-prompt-text" id="resultsMainPrompt"></div>
+          </div>
+          <div class="results-prompt-card">
+            <div class="results-prompt-label">Imposter Prompt</div>
+            <div class="results-prompt-text" id="resultsImposterPrompt"></div>
+          </div>
+        </div>
+      </div>
+      <div class="section-title" style="margin-top:14px;">Votes</div>
+      <div class="scoreboard" id="voteBreakdownList"></div>
+      <div style="margin-top:14px; text-align:center;">
+        <button class="btn-next" onclick="nextImposterRound()">Next Round</button>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="section">
+      <div class="section-title">Settings</div>
+      <div class="room-card">
+        <div class="settings-grid">
+          <div class="settings-field">
+            <label>Prompt Setter</label>
+            <select id="setPromptSetterMode">
+              <option value="host_fixed">Host Always Sets</option>
+              <option value="rotating">Rotate Players</option>
+            </select>
+          </div>
+          <div class="settings-field">
+            <label>Discussion (sec)</label>
+            <input type="number" id="setDiscussionDuration" min="10" max="1800" />
+          </div>
+          <div class="settings-field">
+            <label>Voting (sec)</label>
+            <input type="number" id="setVotingDuration" min="5" max="600" />
+          </div>
+          <div class="settings-field">
+            <label>Imposter Pts / Miss</label>
+            <input type="number" id="setImposterPoints" min="0" max="100" />
+          </div>
+          <div class="settings-field">
+            <label>Correct Guess Pts</label>
+            <input type="number" id="setCorrectPoints" min="0" max="100" />
+          </div>
+        </div>
+        <div style="margin-top:14px;">
+          <button class="btn-push" onclick="saveImposterSettings()">Save Settings</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scoreboard -->
+    <div class="section">
+      <div class="section-title">Players &amp; Scores</div>
+      <div class="scoreboard" id="imposterScoreboard">
+        <div class="empty-msg">Waiting for players to join…</div>
+      </div>
+      <div style="margin-top:10px; text-align:center;">
+        <button class="btn-reset" onclick="resetImposterScores()">Reset All Scores</button>
       </div>
     </div>
   </div>
@@ -469,9 +639,11 @@
       const { players, buzzOrder, answeringPlayer, timerEndsAt, mode } = state;
 
       // Toggle which panel is visible based on the room's game mode (fixed at creation)
-      document.getElementById('buzzerPanel').style.display = mode === 'wordle' ? 'none' : '';
-      document.getElementById('wordlePanel').style.display = mode === 'wordle' ? '' : 'none';
-      document.getElementById('logoText').textContent = mode === 'wordle' ? 'HOODLUMZLE!' : 'JEOPARDY!';
+      document.getElementById('buzzerPanel').style.display   = mode === 'buzzer'   ? '' : 'none';
+      document.getElementById('wordlePanel').style.display   = mode === 'wordle'   ? '' : 'none';
+      document.getElementById('imposterPanel').style.display = mode === 'imposter' ? '' : 'none';
+      document.getElementById('logoText').textContent =
+        mode === 'wordle' ? 'HOODLUMZLE!' : mode === 'imposter' ? 'SUS!' : 'JEOPARDY!';
 
       renderScoreboard(players, buzzOrder, answeringPlayer);
       renderBuzzOrder(buzzOrder, players);
@@ -526,6 +698,171 @@
           `<div class="wordle-tile ${g.result[i]}">${esc(ch)}</div>`
         ).join('') + `</div>`
       ).join('');
+    }
+
+    // ── Sus (Imposter) mode ──────────────────────────────────────────────
+    let imposterState       = null; // cached for score-edit reverts
+    let imposterTimerInterval = null;
+
+    function startImposterCountdown(endsAt, elId) {
+      clearInterval(imposterTimerInterval);
+      const el = document.getElementById(elId);
+      imposterTimerInterval = setInterval(() => {
+        const remaining = Math.ceil((endsAt - Date.now()) / 1000);
+        if (remaining <= 0) {
+          clearInterval(imposterTimerInterval);
+          el.textContent = "Time's up!";
+          return;
+        }
+        el.textContent = remaining + 's remaining';
+      }, 250);
+    }
+    function stopImposterCountdown() {
+      clearInterval(imposterTimerInterval);
+    }
+
+    function startImposterRound()  { socket.emit('start_imposter_round', { roomCode }); }
+    function cancelImposterRound() { socket.emit('cancel_round', { roomCode }); }
+    function skipToVoting()        { socket.emit('skip_to_voting', { roomCode }); }
+    function nextImposterRound()   { socket.emit('next_round', { roomCode }); }
+    function resetImposterScores() {
+      if (!confirm('Reset all scores to 0?')) return;
+      socket.emit('imposter_reset_scores', { roomCode });
+    }
+    function saveImposterSettings() {
+      socket.emit('update_imposter_settings', {
+        roomCode,
+        promptSetterMode:          document.getElementById('setPromptSetterMode').value,
+        discussionDurationSeconds: document.getElementById('setDiscussionDuration').value,
+        votingDurationSeconds:     document.getElementById('setVotingDuration').value,
+        imposterPointsPerMiss:     document.getElementById('setImposterPoints').value,
+        correctGuessPoints:        document.getElementById('setCorrectPoints').value,
+      });
+    }
+
+    const IMPOSTER_PHASE_LABELS = {
+      waiting: 'Waiting to Start', prompt_setting: 'Setting Prompts',
+      discussing: 'Discussing', voting: 'Voting', results: 'Results',
+    };
+
+    socket.on('imposter_room_state', (r) => {
+      imposterState = r;
+
+      document.getElementById('imposterPhaseLabel').textContent = IMPOSTER_PHASE_LABELS[r.phase] || r.phase;
+      document.getElementById('imposterRoundLabel').textContent = 'Round ' + r.roundNumber;
+
+      document.getElementById('imposterWaitingControls').style.display   = r.phase === 'waiting'        ? '' : 'none';
+      document.getElementById('imposterPromptSettingView').style.display = r.phase === 'prompt_setting'  ? '' : 'none';
+      document.getElementById('imposterDiscussingView').style.display    = r.phase === 'discussing'      ? '' : 'none';
+      document.getElementById('imposterVotingView').style.display        = r.phase === 'voting'          ? '' : 'none';
+      document.getElementById('imposterResultsView').style.display       = r.phase === 'results'         ? '' : 'none';
+
+      const startBtn = document.getElementById('startRoundBtn');
+      const caption  = document.getElementById('startRoundCaption');
+      const canStart = r.totalConnectedPlayers >= r.minPlayersNeeded;
+      startBtn.disabled   = !canStart;
+      caption.textContent = canStart ? '' : `Need at least ${r.minPlayersNeeded} players to start (currently ${r.totalConnectedPlayers}).`;
+
+      if (r.phase === 'prompt_setting') {
+        document.getElementById('promptSettingStatus').textContent =
+          `Waiting for ${r.promptSetterName} to write this round's prompts…`;
+      }
+
+      if (r.phase === 'discussing' && r.discussionEndsAt) {
+        startImposterCountdown(r.discussionEndsAt, 'discussCountdown');
+      } else if (r.phase === 'voting' && r.votingEndsAt) {
+        document.getElementById('voteProgress').textContent = `${r.votesCastCount} of ${r.totalConnectedPlayers} votes cast`;
+        startImposterCountdown(r.votingEndsAt, 'votingCountdown');
+      } else {
+        stopImposterCountdown();
+      }
+
+      // Settings only editable while waiting — and only overwrite a field's
+      // displayed value if the host isn't actively focused on it, so a
+      // broadcast triggered by someone else joining/leaving doesn't clobber
+      // an in-progress edit.
+      const settingsDisabled = r.phase !== 'waiting';
+      const fieldValues = {
+        setPromptSetterMode:   r.settings.promptSetterMode,
+        setDiscussionDuration: r.settings.discussionDurationSeconds,
+        setVotingDuration:     r.settings.votingDurationSeconds,
+        setImposterPoints:     r.settings.imposterPointsPerMiss,
+        setCorrectPoints:      r.settings.correctGuessPoints,
+      };
+      for (const [id, val] of Object.entries(fieldValues)) {
+        const el = document.getElementById(id);
+        el.disabled = settingsDisabled;
+        if (document.activeElement !== el) el.value = val;
+      }
+
+      renderImposterScoreboard(r.players);
+    });
+
+    socket.on('imposter_host_prompts', ({ promptsByPlayer }) => {
+      const el = document.getElementById('hostPromptBreakdown');
+      const entries = Object.entries(promptsByPlayer);
+      if (entries.length === 0) {
+        el.innerHTML = '<div class="empty-msg">No players</div>';
+        return;
+      }
+      el.innerHTML = entries.map(([id, info]) => `
+        <div class="prompt-breakdown-row ${info.isImposter ? 'is-imposter' : ''}">
+          <span class="prompt-breakdown-name">${esc(info.name)}</span>
+          <span class="prompt-breakdown-text">${esc(info.prompt)}</span>
+        </div>`).join('');
+    });
+
+    socket.on('imposter_results', (results) => {
+      document.getElementById('resultsImposterName').textContent   = results.imposterName;
+      document.getElementById('resultsMainPrompt').textContent     = results.mainPrompt;
+      document.getElementById('resultsImposterPrompt').textContent = results.imposterPrompt;
+
+      const el = document.getElementById('voteBreakdownList');
+      if (results.voteBreakdown.length === 0) {
+        el.innerHTML = '<div class="empty-msg">No votes were cast</div>';
+        return;
+      }
+      el.innerHTML = results.voteBreakdown.map(v => {
+        const correct = v.votedFor === results.imposter;
+        return `<div class="vote-breakdown-row ${correct ? 'correct' : ''}">
+          <span>${esc(v.voterName)}</span>
+          <span>${v.votedForName ? 'voted ' + esc(v.votedForName) : 'no vote cast'}</span>
+        </div>`;
+      }).join('');
+    });
+
+    function renderImposterScoreboard(players) {
+      const el = document.getElementById('imposterScoreboard');
+      const entries = Object.entries(players || {});
+      if (entries.length === 0) {
+        el.innerHTML = '<div class="empty-msg">Waiting for players to join…</div>';
+        return;
+      }
+      entries.sort((a, b) => b[1].score - a[1].score);
+      el.innerHTML = entries.map(([id, p]) => `
+        <div class="score-row" data-id="${esc(id)}">
+          <span class="score-name" style="color:${safeColor(p.color)}">${esc(p.name)}</span>
+          <input
+            class="score-input"
+            type="number"
+            value="${p.score}"
+            title="Click to edit score"
+            onkeydown="if(event.key==='Enter') commitImposterScore('${esc(id)}', this)"
+            onblur="commitImposterScore('${esc(id)}', this)"
+          />
+          <span class="pts-label">pts</span>
+        </div>`).join('');
+    }
+
+    function commitImposterScore(socketId, inputEl) {
+      const raw      = inputEl.value.replace(/[^0-9\-]/g, '');
+      const newScore = parseInt(raw, 10);
+      if (isNaN(newScore)) {
+        if (imposterState?.players[socketId] !== undefined) inputEl.value = imposterState.players[socketId].score;
+        return;
+      }
+      socket.emit('host_update_score', { roomCode, socketId, newScore });
+      inputEl.blur();
     }
 
     // ── Render scoreboard ─────────────────────────────────────────────────
