@@ -733,7 +733,7 @@
       document.getElementById('imposterPanel').style.display = mode === 'imposter' ? '' : 'none';
       document.getElementById('rps9Panel').style.display     = mode === 'rps9'     ? '' : 'none';
       document.getElementById('logoText').textContent =
-        mode === 'wordle' ? 'HOODLUMZLE!' : mode === 'imposter' ? 'SUS!' : mode === 'rps9' ? 'RPS9!' : 'JEOPARDY!';
+        mode === 'wordle' ? 'HOODLUMZLE!' : mode === 'imposter' ? 'SUS!' : mode === 'rps9' ? 'RPS!' : 'JEOPARDY!';
 
       renderScoreboard(players, buzzOrder, answeringPlayer);
       renderBuzzOrder(buzzOrder, players);
@@ -1047,7 +1047,7 @@
       document.getElementById('rps9TiedBanner').style.display = lastResults.allTied ? '' : 'none';
 
       const gains = Object.entries(lastResults.pointsGained || {})
-        .map(([id, n]) => `${players[id]?.name || '?'} +${n}`);
+        .map(([id, n]) => `${players[id]?.name || '?'} ${n > 0 ? '+' + n : n}`);
       document.getElementById('rps9PointsSummary').textContent =
         gains.length ? 'This round: ' + gains.join(', ') : 'This round: no points scored';
 
@@ -1067,7 +1067,7 @@
 
     function rps9MatchupRowHtml(m) {
       const players = `${esc(m.aName)} ${rps9PickChip(m.aPick)} vs ${esc(m.bName)} ${rps9PickChip(m.bPick)}`;
-      const flavor = m.result === 'tie' ? 'Tie — no points.' : esc(m.flavor);
+      const flavor = m.result === 'tie' ? 'Tie — both get +0.5.' : esc(m.flavor);
       return `<div class="rps9-matchup-row">
         <span class="rps9-matchup-players">${players}</span>
         <span class="rps9-matchup-flavor">${flavor}</span>
@@ -1098,18 +1098,19 @@
     }
 
     function commitRps9Score(socketId, inputEl) {
-      const raw      = inputEl.value.replace(/[^0-9\-]/g, '');
-      const newScore = parseInt(raw, 10);
+      const raw      = inputEl.value.replace(/[^0-9.\-]/g, '');
+      const newScore = parseFloat(raw);
       if (isNaN(newScore)) {
         if (rps9State?.players[socketId] !== undefined) inputEl.value = rps9State.players[socketId].score;
         return;
       }
-      socket.emit('host_update_score', { roomCode, socketId, newScore });
+      socket.emit('host_update_score', { roomCode, socketId, newScore: Math.max(0, newScore) });
       inputEl.blur();
     }
 
     // ── RPS9 wheel diagram — click a node to highlight what it beats ────────
     function buildRps9Wheel(containerId) {
+      const displaySize = 560; // intrinsic width/height so ancestors size around this, not the smaller viewBox math
       const R = 105, nodeR = 26, labelFontSize = 12, labelR = R + nodeR + 18;
       // Size the viewBox from the longest label's estimated width so labels near the
       // horizontal axis (e.g. "Supernova", "Spock") never clip past the edge.
@@ -1156,7 +1157,7 @@
       }).join('');
 
       document.getElementById(containerId).innerHTML = `
-        <svg viewBox="0 0 ${size} ${size}" style="width:100%; max-width:360px; display:block; margin:0 auto;">
+        <svg viewBox="0 0 ${size} ${size}" width="${displaySize}" height="${displaySize}" style="width:100%; max-width:${displaySize}px; display:block; margin:0 auto;">
           <defs>${markers}</defs>
           <g id="${containerId}-arrows">${arrows}</g>
           <g>${nodes}</g>

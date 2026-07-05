@@ -52,6 +52,7 @@
 
     .btn-row {
       display: flex;
+      flex-wrap: wrap;
       gap: 16px;
       margin-bottom: 0;
     }
@@ -124,7 +125,7 @@
       border-radius: var(--radius);
       padding: 32px;
       width: 100%;
-      max-width: 400px;
+      max-width: 500px;
     }
     .modal h2 {
       font-size: 1.3rem;
@@ -236,7 +237,7 @@
         <button type="button" class="btn-secondary" id="modeWordleBtn" onclick="selectMode('wordle')">Wordle</button>
         <!-- internal mode value is 'imposter'; user-facing label is 'sus' per product decision -->
         <button type="button" class="btn-secondary" id="modeSusBtn" onclick="selectMode('imposter')">Sus</button>
-        <button type="button" class="btn-secondary" id="modeRps9Btn" onclick="selectMode('rps9')">RPS9</button>
+        <button type="button" class="btn-secondary" id="modeRps9Btn" onclick="selectMode('rps9')">RPS</button>
       </div>
 
       <div id="createError" class="error-banner"></div>

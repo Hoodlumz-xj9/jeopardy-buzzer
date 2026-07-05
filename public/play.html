@@ -711,7 +711,7 @@
         if (mode === 'imposter') {
           document.getElementById('gameTitle').textContent = `Welcome ${possessive} Sussy Bakas`;
         } else if (mode === 'rps9') {
-          document.getElementById('gameTitle').textContent = `${possessive} RPS9 Arena`;
+          document.getElementById('gameTitle').textContent = `${possessive} RPS Arena`;
         } else {
           const brand = mode === 'wordle' ? 'Hoodlumzle' : 'Jeopardy';
           document.getElementById('gameTitle').textContent = `${possessive} ${brand}`;
@@ -1159,7 +1159,7 @@
         cardCls = m.winnerId === socket.id ? 'won' : 'lost';
       }
       const vsLine = `${esc(m.aName)} ${rps9PickChip(m.aPick)} vs ${esc(m.bName)} ${rps9PickChip(m.bPick)}`;
-      const flavor = m.result === 'tie' ? 'Tie — no points.' : esc(m.flavor);
+      const flavor = m.result === 'tie' ? 'Tie — both get +0.5.' : esc(m.flavor);
       return `<div class="rps9-matchup-card ${cardCls}">
         <div class="rps9-matchup-vs">${vsLine}</div>
         <div class="rps9-matchup-flavor">${flavor}</div>
@@ -1186,6 +1186,7 @@
 
     // ── RPS9 wheel diagram — tap a node to highlight what it beats ──────────
     function buildRps9Wheel(containerId) {
+      const displaySize = 420; // intrinsic width/height so ancestors size around this, not the smaller viewBox math
       const R = 95, nodeR = 24, labelFontSize = 11, labelR = R + nodeR + 16;
       // Size the viewBox from the longest label's estimated width so labels near the
       // horizontal axis (e.g. "Supernova", "Spock") never clip past the edge.
@@ -1232,7 +1233,7 @@
       }).join('');
 
       document.getElementById(containerId).innerHTML = `
-        <svg viewBox="0 0 ${size} ${size}" style="width:100%; max-width:320px; display:block; margin:0 auto;">
+        <svg viewBox="0 0 ${size} ${size}" width="${displaySize}" height="${displaySize}" style="width:100%; max-width:${displaySize}px; display:block; margin:0 auto;">
           <defs>${markers}</defs>
           <g id="${containerId}-arrows">${arrows}</g>
           <g>${nodes}</g>

@@ -297,7 +297,10 @@ io.on('connection', (socket) => {
     const room = rooms[roomCode];
     if (!room || !room.players[socketId]) return;
 
-    room.players[socketId].score = parseInt(newScore, 10) || 0;
+    let parsedScore = parseFloat(newScore);
+    if (isNaN(parsedScore)) parsedScore = 0;
+    if (room.mode === 'rps9') parsedScore = Math.max(0, parsedScore); // RPS9 scores never go negative
+    room.players[socketId].score = parsedScore;
     broadcastState(roomCode);
     if (room.mode === 'imposter') imposterGame.broadcastImposterState(io, rooms, roomCode);
     if (room.mode === 'rps9')     rps9Game.broadcastRps9State(io, rooms, roomCode);

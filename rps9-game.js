@@ -95,10 +95,15 @@ function allPairs(ids) {
 // The one place that flips 'picking' -> 'results'. Called from both the pick handler
 // (once everyone connected has picked) and disconnect handling (if the now-smaller
 // pool means everyone remaining has already picked).
+// Win = +1, loss = -1, tie = +0.5 each. A player's several matchups in a round are
+// summed into one raw delta first, THEN floored at 0 once — not floored after each
+// individual matchup — so a player who nets negative for the round can't be rescued
+// by a lucky win order, and one who's already at 0 doesn't look like they "dodged"
+// a loss that happened before a later win in processing order.
 function resolveRps9Round(room) {
   const r = room.rps9Round;
   const pickerIds = Object.keys(r.picks);
-  const pointsGained = {};
+  const rawDelta = {};
   const matchups = [];
 
   for (const [aId, bId] of allPairs(pickerIds)) {
@@ -109,19 +114,31 @@ function resolveRps9Round(room) {
     const bName = room.players[bId]?.name || '?';
 
     if (outcome.result === 'tie') {
+      rawDelta[aId] = (rawDelta[aId] || 0) + 0.5;
+      rawDelta[bId] = (rawDelta[bId] || 0) + 0.5;
       matchups.push({ aId, bId, aName, bName, aPick, bPick, result: 'tie' });
       continue;
     }
 
     const winnerId = outcome.winner === aPick ? aId : bId;
     const loserId  = outcome.winner === aPick ? bId : aId;
-    room.players[winnerId].score = (room.players[winnerId].score || 0) + 1;
-    pointsGained[winnerId] = (pointsGained[winnerId] || 0) + 1;
+    rawDelta[winnerId] = (rawDelta[winnerId] || 0) + 1;
+    rawDelta[loserId]  = (rawDelta[loserId]  || 0) - 1;
     matchups.push({
       aId, bId, aName, bName, aPick, bPick,
       result: winnerId === aId ? 'a' : 'b',
       winnerId, loserId, flavor: outcome.flavor,
     });
+  }
+
+  // Apply each player's net delta once, floored at 0 — report the actual change
+  // applied (not the raw delta) so the round summary always matches the scoreboard.
+  const pointsGained = {};
+  for (const [id, delta] of Object.entries(rawDelta)) {
+    const before = room.players[id].score || 0;
+    const after  = Math.max(0, before + delta);
+    pointsGained[id] = after - before;
+    room.players[id].score = after;
   }
 
   const allTied = pickerIds.length > 1 && new Set(pickerIds.map(id => r.picks[id])).size === 1;
