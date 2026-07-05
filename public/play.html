@@ -397,6 +397,35 @@
     .results-prompt-card { background: #0a0c14; border: 1px solid #3e3b70; border-radius: 8px; padding: 10px; }
     .results-prompt-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; margin-bottom: 4px; }
     .results-prompt-text { font-size: 0.85rem; }
+
+    /* ── RPS9 mode ──────────────────────────────────────────────── */
+    .rps9-picker-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 8px;
+    }
+    .rps9-item-btn {
+      padding: 14px 6px; border-radius: 10px; font-size: 0.95rem; font-weight: 700;
+      color: #fff; border: 2px solid rgba(255,255,255,0.15);
+    }
+    .rps9-item-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .rps9-item-btn.picked-mine { box-shadow: 0 0 0 3px #fff inset; }
+    .rps9-pick-status { text-align: center; color: var(--muted); font-size: 0.9rem; margin-top: 12px; }
+    .rps9-tied-banner { text-align: center; color: var(--gold); font-weight: 700; margin-bottom: 10px; }
+    .rps9-matchup-card {
+      background: #0a0c14; border: 1px solid #3e3b70; border-radius: 8px;
+      padding: 12px; margin-bottom: 10px; text-align: center;
+    }
+    .rps9-matchup-card.won  { border-color: var(--gold); background: rgba(245,197,24,0.08); }
+    .rps9-matchup-card.lost { border-color: var(--blue-lt); background: rgba(37,99,201,0.1); }
+    .rps9-matchup-vs { font-size: 0.95rem; font-weight: 700; margin-bottom: 6px; }
+    .rps9-matchup-flavor { font-size: 0.85rem; color: var(--muted); }
+    .rps9-pick-chip {
+      display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px 2px 4px;
+      border-radius: 10px; font-size: 0.8rem; font-weight: 700;
+    }
+    .rps9-pick-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .btn-wheel-toggle { background: var(--blue-lt); color: #fff; width: 100%; padding: 10px; font-size: 0.9rem; }
+    .btn-wheel-toggle:hover { filter: brightness(1.15); }
+    .rps9-wheel-hint { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -515,6 +544,42 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- RPS9 panel -->
+  <div id="rps9Panel" style="display:none">
+
+    <!-- Scoreboard -->
+    <div class="scoreboard">
+      <div class="scoreboard-title">Scoreboard</div>
+      <div id="rps9ScoreList"><div class="empty-msg">Waiting for players…</div></div>
+    </div>
+
+    <div class="wordle-card">
+      <div class="imposter-phase-label" id="rps9PhaseLabel">Waiting</div>
+      <div class="imposter-round-label" id="rps9RoundLabel">Round 1</div>
+
+      <!-- Waiting for host to start -->
+      <div id="rps9WaitingView">Waiting for the host to start the round…</div>
+
+      <!-- Picking -->
+      <div id="rps9PickerView" style="display:none">
+        <div class="rps9-picker-grid" id="rps9PickerGrid"></div>
+        <div class="rps9-pick-status" id="rps9PickStatus"></div>
+      </div>
+
+      <!-- Results -->
+      <div id="rps9ResultsPlayerView" style="display:none">
+        <div class="rps9-tied-banner" id="rps9TiedBannerPlayer" style="display:none">Everyone picked the same thing — replay!</div>
+        <div id="rps9MyMatchups"></div>
+      </div>
+    </div>
+
+    <!-- Wheel toggle -->
+    <div class="wordle-card">
+      <button class="btn-wheel-toggle" onclick="toggleRps9Wheel()" id="rps9WheelToggleBtn">Show Wheel — What Beats What</button>
+      <div id="rps9WheelPlayer" style="display:none; margin-top:14px;"></div>
     </div>
   </div>
 
@@ -639,12 +704,14 @@
     socket.on('room_state', ({ players, buzzOrder, answeringPlayer, timerEndsAt, hostName, mode, serverNow }) => {
       if (serverNow) clockOffsetMs = serverNow - Date.now();
 
-      // Show host name possessively in all three modes — apostrophe-only for names
+      // Show host name possessively in all four modes — apostrophe-only for names
       // already ending in s (e.g. "Chris' Sussy Bakas" not "Chris's Sussy Bakas").
       if (hostName) {
         const possessive = hostName + (hostName.endsWith('s') ? '’' : '’s');
         if (mode === 'imposter') {
           document.getElementById('gameTitle').textContent = `Welcome ${possessive} Sussy Bakas`;
+        } else if (mode === 'rps9') {
+          document.getElementById('gameTitle').textContent = `${possessive} RPS9 Arena`;
         } else {
           const brand = mode === 'wordle' ? 'Hoodlumzle' : 'Jeopardy';
           document.getElementById('gameTitle').textContent = `${possessive} ${brand}`;
@@ -655,6 +722,7 @@
       document.getElementById('buzzerPanel').style.display   = mode === 'buzzer'   ? '' : 'none';
       document.getElementById('wordlePanel').style.display   = mode === 'wordle'   ? '' : 'none';
       document.getElementById('imposterPanel').style.display = mode === 'imposter' ? '' : 'none';
+      document.getElementById('rps9Panel').style.display     = mode === 'rps9'     ? '' : 'none';
 
       renderScoreboard(players, answeringPlayer);
       renderBuzzOrder(buzzOrder, players);
@@ -971,6 +1039,219 @@
           <span class="score-pts">${p.score} pts</span>
         </div>`;
       }).join('');
+    }
+
+    // ── RPS9 mode ──────────────────────────────────────────────────────────
+    // Static rule data mirrored client-side (server is still authoritative for
+    // resolving rounds) — same duplication pattern already used for esc()/safeColor().
+    const RPS9_ITEMS = ['rock', 'wizard', 'scissors', 'dragon', 'lizard', 'paper', 'supernova', 'spock', 'time'];
+    const RPS9_BEATS = {
+      rock:      ['wizard', 'scissors', 'dragon', 'lizard'],
+      wizard:    ['scissors', 'dragon', 'lizard', 'paper'],
+      scissors:  ['dragon', 'lizard', 'paper', 'supernova'],
+      dragon:    ['lizard', 'paper', 'supernova', 'spock'],
+      lizard:    ['paper', 'supernova', 'spock', 'time'],
+      paper:     ['supernova', 'spock', 'time', 'rock'],
+      supernova: ['spock', 'time', 'rock', 'wizard'],
+      spock:     ['time', 'rock', 'wizard', 'scissors'],
+      time:      ['rock', 'wizard', 'scissors', 'dragon'],
+    };
+    const RPS9_COLORS = {
+      rock: '#b08968', wizard: '#5b5ea6', scissors: '#6ba3c9', dragon: '#d1495b',
+      lizard: '#52b788', paper: '#e8e2d0', supernova: '#e6399b', spock: '#3d7dd8', time: '#c9a227',
+    };
+    const RPS9_DARK_TEXT = new Set(['paper']); // light swatch needs dark text for contrast
+    function rps9Label(item) { return item.charAt(0).toUpperCase() + item.slice(1); }
+
+    let myRps9Pick = null; // reset whenever a fresh picking phase starts
+
+    (function buildRps9PickerGrid() {
+      const el = document.getElementById('rps9PickerGrid');
+      el.innerHTML = RPS9_ITEMS.map(item => `
+        <button class="rps9-item-btn" id="rps9Btn-${item}"
+          style="background:${RPS9_COLORS[item]}; color:${RPS9_DARK_TEXT.has(item) ? '#0a0c14' : '#fff'}"
+          onclick="rps9Pick('${item}')">${rps9Label(item)}</button>`).join('');
+    })();
+
+    function rps9Pick(item) {
+      if (myRps9Pick) return;
+      myRps9Pick = item;
+      socket.emit('rps9_pick', { roomCode, choice: item });
+      RPS9_ITEMS.forEach(i => {
+        const btn = document.getElementById('rps9Btn-' + i);
+        btn.disabled = true;
+        btn.classList.toggle('picked-mine', i === item);
+      });
+      document.getElementById('rps9PickStatus').textContent = `You picked ${rps9Label(item)} — waiting for others…`;
+    }
+
+    function toggleRps9Wheel() {
+      const el = document.getElementById('rps9WheelPlayer');
+      const show = el.style.display === 'none';
+      el.style.display = show ? '' : 'none';
+      document.getElementById('rps9WheelToggleBtn').textContent =
+        show ? 'Hide Wheel' : 'Show Wheel — What Beats What';
+      if (show && !el.dataset.built) {
+        buildRps9Wheel('rps9WheelPlayer');
+        el.dataset.built = '1';
+      }
+    }
+
+    socket.on('rps9_room_state', (r) => {
+      if (r.serverNow) clockOffsetMs = r.serverNow - Date.now();
+
+      document.getElementById('rps9PhaseLabel').textContent =
+        r.phase === 'waiting' ? 'Waiting to Start' : r.phase === 'picking' ? 'Picking' : 'Results';
+      document.getElementById('rps9RoundLabel').textContent = 'Round ' + r.roundNumber;
+
+      document.getElementById('rps9WaitingView').style.display       = r.phase === 'waiting' ? '' : 'none';
+      document.getElementById('rps9PickerView').style.display        = r.phase === 'picking' ? '' : 'none';
+      document.getElementById('rps9ResultsPlayerView').style.display = r.phase === 'results' ? '' : 'none';
+
+      if (r.phase === 'picking') {
+        if (myRps9Pick === null) {
+          RPS9_ITEMS.forEach(i => {
+            const btn = document.getElementById('rps9Btn-' + i);
+            btn.disabled = false;
+            btn.classList.remove('picked-mine');
+          });
+          document.getElementById('rps9PickStatus').textContent = '';
+        }
+        document.getElementById('rps9PickStatus').textContent = myRps9Pick
+          ? `You picked ${rps9Label(myRps9Pick)} — ${r.pickedCount} of ${r.totalConnectedPlayers} have picked`
+          : `${r.pickedCount} of ${r.totalConnectedPlayers} have picked`;
+      } else {
+        myRps9Pick = null; // fresh pick allowed once the next picking phase starts
+      }
+
+      if (r.phase === 'results' && r.lastResults) {
+        renderRps9MyResults(r.lastResults);
+      }
+
+      renderRps9Scoreboard(r.players);
+    });
+
+    function renderRps9MyResults(lastResults) {
+      document.getElementById('rps9TiedBannerPlayer').style.display = lastResults.allTied ? '' : 'none';
+
+      const mine = lastResults.matchups.filter(m => m.aId === socket.id || m.bId === socket.id);
+      const others = lastResults.matchups.filter(m => m.aId !== socket.id && m.bId !== socket.id);
+      const ordered = mine.concat(others);
+
+      const el = document.getElementById('rps9MyMatchups');
+      if (ordered.length === 0) {
+        el.innerHTML = '<div class="empty-msg">No matchups this round</div>';
+        return;
+      }
+      el.innerHTML = ordered.map(m => rps9MatchupCardHtml(m)).join('');
+    }
+
+    function rps9PickChip(item) {
+      const color = RPS9_COLORS[item] || '#666';
+      return `<span class="rps9-pick-chip" style="background:${color}22; color:${RPS9_DARK_TEXT.has(item) ? '#0a0c14' : color}">
+        <span class="rps9-pick-dot" style="background:${color}"></span>${rps9Label(item)}</span>`;
+    }
+
+    function rps9MatchupCardHtml(m) {
+      const isMine = m.aId === socket.id || m.bId === socket.id;
+      let cardCls = '';
+      if (isMine && m.result !== 'tie') {
+        cardCls = m.winnerId === socket.id ? 'won' : 'lost';
+      }
+      const vsLine = `${esc(m.aName)} ${rps9PickChip(m.aPick)} vs ${esc(m.bName)} ${rps9PickChip(m.bPick)}`;
+      const flavor = m.result === 'tie' ? 'Tie — no points.' : esc(m.flavor);
+      return `<div class="rps9-matchup-card ${cardCls}">
+        <div class="rps9-matchup-vs">${vsLine}</div>
+        <div class="rps9-matchup-flavor">${flavor}</div>
+      </div>`;
+    }
+
+    function renderRps9Scoreboard(players) {
+      const el = document.getElementById('rps9ScoreList');
+      const entries = Object.entries(players || {});
+      if (entries.length === 0) {
+        el.innerHTML = '<div class="empty-msg">No players yet</div>';
+        return;
+      }
+      entries.sort((a, b) => b[1].score - a[1].score);
+      el.innerHTML = entries.map(([id, p]) => {
+        const isMe = id === socket.id;
+        const tag  = isMe ? ' <em style="font-size:0.75rem;color:var(--muted)">(you)</em>' : '';
+        return `<div class="score-row${isMe ? ' me' : ''}">
+          <span class="score-name"><span style="color:${safeColor(p.color)}">${esc(p.name)}</span>${tag}</span>
+          <span class="score-pts">${p.score} pts</span>
+        </div>`;
+      }).join('');
+    }
+
+    // ── RPS9 wheel diagram — tap a node to highlight what it beats ──────────
+    function buildRps9Wheel(containerId) {
+      const R = 95, nodeR = 24, labelFontSize = 11, labelR = R + nodeR + 16;
+      // Size the viewBox from the longest label's estimated width so labels near the
+      // horizontal axis (e.g. "Supernova", "Spock") never clip past the edge.
+      const charW = labelFontSize * 0.62;
+      const maxLabelWidth = Math.max(...RPS9_ITEMS.map(i => rps9Label(i).length)) * charW;
+      const half = labelR + maxLabelWidth + 12;
+      const size = half * 2, cx = half, cy = half;
+      const positions = {};
+      RPS9_ITEMS.forEach((item, i) => {
+        const angle = (-90 + i * (360 / RPS9_ITEMS.length)) * Math.PI / 180;
+        positions[item] = {
+          x: cx + R * Math.cos(angle), y: cy + R * Math.sin(angle),
+          lx: cx + labelR * Math.cos(angle), ly: cy + labelR * Math.sin(angle),
+        };
+      });
+
+      const markers = RPS9_ITEMS.map(item => `
+        <marker id="${containerId}-arrow-${item}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="${RPS9_COLORS[item]}" />
+        </marker>`).join('');
+
+      let arrows = '';
+      RPS9_ITEMS.forEach(from => {
+        RPS9_BEATS[from].forEach(to => {
+          const a = positions[from], b = positions[to];
+          const dx = b.x - a.x, dy = b.y - a.y, dist = Math.hypot(dx, dy);
+          const ux = dx / dist, uy = dy / dist;
+          const x1 = a.x + ux * (nodeR + 2), y1 = a.y + uy * (nodeR + 2);
+          const x2 = b.x - ux * (nodeR + 8), y2 = b.y - uy * (nodeR + 8);
+          arrows += `<line class="rps9-arrow" data-from="${from}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${RPS9_COLORS[from]}" stroke-width="2" opacity="0.07" marker-end="url(#${containerId}-arrow-${from})" />`;
+        });
+      });
+
+      const nodes = RPS9_ITEMS.map(item => {
+        const p = positions[item];
+        const textColor = RPS9_DARK_TEXT.has(item) ? '#0a0c14' : '#fff';
+        const anchor = p.lx < cx - 6 ? 'end' : p.lx > cx + 6 ? 'start' : 'middle';
+        return `
+          <g class="rps9-node" data-item="${item}" onclick="rps9WheelClick('${containerId}','${item}')" style="cursor:pointer;">
+            <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nodeR}" fill="${RPS9_COLORS[item]}" stroke="#0a0c14" stroke-width="2" />
+            <text x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-size="9" font-weight="800" fill="${textColor}">${item.slice(0, 3).toUpperCase()}</text>
+            <text x="${p.lx.toFixed(1)}" y="${p.ly.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="central" font-size="11" font-weight="700" fill="var(--text)">${rps9Label(item)}</text>
+          </g>`;
+      }).join('');
+
+      document.getElementById(containerId).innerHTML = `
+        <svg viewBox="0 0 ${size} ${size}" style="width:100%; max-width:320px; display:block; margin:0 auto;">
+          <defs>${markers}</defs>
+          <g id="${containerId}-arrows">${arrows}</g>
+          <g>${nodes}</g>
+        </svg>
+        <div class="rps9-wheel-hint" id="${containerId}-hint">Tap an item to see what it beats</div>`;
+    }
+
+    function rps9WheelClick(containerId, item) {
+      const arrowsGroup = document.getElementById(containerId + '-arrows');
+      const selected = arrowsGroup.dataset.selected === item ? null : item;
+      arrowsGroup.dataset.selected = selected || '';
+      arrowsGroup.querySelectorAll('.rps9-arrow').forEach(line => {
+        const on = selected && line.dataset.from === selected;
+        line.style.opacity = on ? '1' : '0.07';
+        line.style.strokeWidth = on ? '3' : '2';
+      });
+      document.getElementById(containerId + '-hint').textContent = selected
+        ? `${rps9Label(selected)} beats: ${RPS9_BEATS[selected].map(rps9Label).join(', ')}`
+        : 'Tap an item to see what it beats';
     }
 
     // ── Render helpers ────────────────────────────────────────────────────

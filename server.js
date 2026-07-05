@@ -7,6 +7,7 @@ const http    = require('http');
 const { Server } = require('socket.io');
 const path    = require('path');
 const imposterGame = require('./imposter-game');
+const rps9Game = require('./rps9-game');
 
 const app    = express();
 const server = http.createServer(app);
@@ -151,7 +152,7 @@ app.post('/create-room', (req, res) => {
     code,
     password,
     hostName,
-    mode:            mode === 'wordle' ? 'wordle' : mode === 'imposter' ? 'imposter' : 'buzzer',
+    mode:            mode === 'wordle' ? 'wordle' : mode === 'imposter' ? 'imposter' : mode === 'rps9' ? 'rps9' : 'buzzer',
     hostSocketId:    null,
     players:         {},
     buzzOrder:       [],
@@ -163,6 +164,9 @@ app.post('/create-room', (req, res) => {
   }
   if (rooms[code].mode === 'imposter') {
     Object.assign(rooms[code], imposterGame.createImposterRoomState());
+  }
+  if (rooms[code].mode === 'rps9') {
+    Object.assign(rooms[code], rps9Game.createRps9RoomState());
   }
 
   console.log(`Room created: ${code} by ${hostName} (${rooms[code].mode} mode)`);
@@ -206,6 +210,8 @@ io.on('connection', (socket) => {
     if (!room)                  return socket.emit('error', { message: 'Room not found' });
     if (room.password !== password) return socket.emit('error', { message: 'Wrong password' });
     if (!playerName?.trim())    return socket.emit('error', { message: 'Name required' });
+    if (room.mode === 'rps9' && Object.keys(room.players).length >= rps9Game.MAX_PLAYERS)
+      return socket.emit('error', { message: `This room is full (${rps9Game.MAX_PLAYERS} players max)` });
 
     // Name color is chosen once, in the join form — fall back to the default if missing/invalid
     const nameColor = /^#[0-9A-Fa-f]{6}$/.test(color || '') ? color : '#E8EAF0';
@@ -218,6 +224,7 @@ io.on('connection', (socket) => {
     broadcastState(roomCode);
     if (room.mode === 'wordle')   broadcastWordleState(roomCode);
     if (room.mode === 'imposter') imposterGame.broadcastImposterState(io, rooms, roomCode);
+    if (room.mode === 'rps9')     rps9Game.broadcastRps9State(io, rooms, roomCode);
   });
 
   // ── Host socket identifies itself (no password re-check — room was already created) ──
@@ -233,10 +240,12 @@ io.on('connection', (socket) => {
     broadcastState(roomCode);
     if (room.mode === 'wordle')   broadcastWordleState(roomCode);
     if (room.mode === 'imposter') imposterGame.broadcastImposterState(io, rooms, roomCode);
+    if (room.mode === 'rps9')     rps9Game.broadcastRps9State(io, rooms, roomCode);
   });
 
   // ── Sus (Imposter) mode — all handlers live in imposter-game.js ─────────
   imposterGame.registerSocketHandlers(io, socket, rooms);
+  rps9Game.registerSocketHandlers(io, socket, rooms);
 
   // ── Player buzzes ────────────────────────────────────────────────────────
   socket.on('buzz', ({ roomCode }) => {
@@ -291,6 +300,7 @@ io.on('connection', (socket) => {
     room.players[socketId].score = parseInt(newScore, 10) || 0;
     broadcastState(roomCode);
     if (room.mode === 'imposter') imposterGame.broadcastImposterState(io, rooms, roomCode);
+    if (room.mode === 'rps9')     rps9Game.broadcastRps9State(io, rooms, roomCode);
   });
 
   // ── Host pushes the secret word live — starts a fresh round ─────────────
@@ -372,6 +382,7 @@ io.on('connection', (socket) => {
         delete room.wordle.solved[socket.id];
       }
       if (room.mode === 'imposter') imposterGame.handleDisconnect(io, rooms, currentRoom, socket.id);
+      if (room.mode === 'rps9')     rps9Game.handleDisconnect(io, rooms, currentRoom, socket.id);
       broadcastState(currentRoom);
       if (room.mode === 'wordle') broadcastWordleState(currentRoom);
     }

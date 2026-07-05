@@ -335,6 +335,25 @@
     .vote-breakdown-row { display: flex; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid #1a1e30; font-size: 0.9rem; }
     .vote-breakdown-row:last-child { border-bottom: none; }
     .vote-breakdown-row.correct { border-left: 3px solid var(--gold); background: rgba(245,197,24,0.06); }
+
+    /* ── RPS9 mode ──────────────────────────────────────────────── */
+    .rps9-tied-banner {
+      text-align: center; color: var(--gold); font-weight: 700; padding: 4px 0 10px;
+    }
+    .rps9-points-summary { font-size: 0.9rem; color: var(--muted); text-align: center; margin-bottom: 10px; }
+    .rps9-matchup-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 10px 16px; border-bottom: 1px solid #1a1e30; font-size: 0.88rem;
+    }
+    .rps9-matchup-row:last-child { border-bottom: none; }
+    .rps9-matchup-players { flex-shrink: 0; font-weight: 600; }
+    .rps9-matchup-flavor { color: var(--muted); text-align: right; }
+    .rps9-pick-chip {
+      display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px 2px 4px;
+      border-radius: 10px; font-size: 0.8rem; font-weight: 700;
+    }
+    .rps9-pick-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .rps9-wheel-hint { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -532,6 +551,66 @@
     </div>
   </div>
 
+  <!-- RPS9 panel -->
+  <div id="rps9Panel" style="display:none">
+
+    <!-- Phase + round indicator, Start Round -->
+    <div class="section">
+      <div class="room-card">
+        <div class="imposter-phase-bar">
+          <div>
+            <div class="imposter-phase-label" id="rps9PhaseLabel">Waiting</div>
+            <div class="imposter-round-label" id="rps9RoundLabel">Round 1</div>
+          </div>
+          <div id="rps9WaitingControls">
+            <button class="btn-start" id="rps9StartBtn" onclick="startRps9Round()">Start Round</button>
+          </div>
+        </div>
+        <div class="start-round-caption" id="rps9StartCaption"></div>
+      </div>
+    </div>
+
+    <!-- Picking phase -->
+    <div class="section" id="rps9PickingView" style="display:none">
+      <div class="room-card">
+        <div class="wordle-active-bar">
+          <div class="wordle-len-confirm" id="rps9PickProgress"></div>
+          <button class="btn-cancel" onclick="cancelRps9Round()">Cancel Round</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results phase -->
+    <div class="section" id="rps9ResultsView" style="display:none">
+      <div class="room-card rps9-tied-banner" id="rps9TiedBanner" style="display:none">
+        Everyone picked the same thing — replay!
+      </div>
+      <div class="rps9-points-summary" id="rps9PointsSummary"></div>
+      <div class="section-title">Matchups</div>
+      <div class="scoreboard" id="rps9MatchupList"></div>
+      <div style="margin-top:14px; text-align:center;">
+        <button class="btn-next" onclick="nextRps9Round()">Next Round</button>
+      </div>
+    </div>
+
+    <!-- Wheel diagram -->
+    <div class="section">
+      <div class="section-title">What Beats What</div>
+      <div class="room-card" id="rps9WheelHost"></div>
+    </div>
+
+    <!-- Scoreboard -->
+    <div class="section">
+      <div class="section-title">Players &amp; Scores</div>
+      <div class="scoreboard" id="rps9Scoreboard">
+        <div class="empty-msg">Waiting for players to join…</div>
+      </div>
+      <div style="margin-top:10px; text-align:center;">
+        <button class="btn-reset" onclick="resetRps9Scores()">Reset All Scores</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script>
     // ── Bootstrap from sessionStorage (set by index.html) ────────────────
@@ -652,8 +731,9 @@
       document.getElementById('buzzerPanel').style.display   = mode === 'buzzer'   ? '' : 'none';
       document.getElementById('wordlePanel').style.display   = mode === 'wordle'   ? '' : 'none';
       document.getElementById('imposterPanel').style.display = mode === 'imposter' ? '' : 'none';
+      document.getElementById('rps9Panel').style.display     = mode === 'rps9'     ? '' : 'none';
       document.getElementById('logoText').textContent =
-        mode === 'wordle' ? 'HOODLUMZLE!' : mode === 'imposter' ? 'SUS!' : 'JEOPARDY!';
+        mode === 'wordle' ? 'HOODLUMZLE!' : mode === 'imposter' ? 'SUS!' : mode === 'rps9' ? 'RPS9!' : 'JEOPARDY!';
 
       renderScoreboard(players, buzzOrder, answeringPlayer);
       renderBuzzOrder(buzzOrder, players);
@@ -900,6 +980,205 @@
       socket.emit('host_update_score', { roomCode, socketId, newScore });
       inputEl.blur();
     }
+
+    // ── RPS9 mode ──────────────────────────────────────────────────────────
+    // Static rule data mirrored client-side (server is still authoritative for
+    // resolving rounds) — same duplication pattern already used for esc()/safeColor().
+    const RPS9_ITEMS = ['rock', 'wizard', 'scissors', 'dragon', 'lizard', 'paper', 'supernova', 'spock', 'time'];
+    const RPS9_BEATS = {
+      rock:      ['wizard', 'scissors', 'dragon', 'lizard'],
+      wizard:    ['scissors', 'dragon', 'lizard', 'paper'],
+      scissors:  ['dragon', 'lizard', 'paper', 'supernova'],
+      dragon:    ['lizard', 'paper', 'supernova', 'spock'],
+      lizard:    ['paper', 'supernova', 'spock', 'time'],
+      paper:     ['supernova', 'spock', 'time', 'rock'],
+      supernova: ['spock', 'time', 'rock', 'wizard'],
+      spock:     ['time', 'rock', 'wizard', 'scissors'],
+      time:      ['rock', 'wizard', 'scissors', 'dragon'],
+    };
+    const RPS9_COLORS = {
+      rock: '#b08968', wizard: '#5b5ea6', scissors: '#6ba3c9', dragon: '#d1495b',
+      lizard: '#52b788', paper: '#e8e2d0', supernova: '#e6399b', spock: '#3d7dd8', time: '#c9a227',
+    };
+    const RPS9_DARK_TEXT = new Set(['paper']); // light swatch needs dark text for contrast
+    function rps9Label(item) { return item.charAt(0).toUpperCase() + item.slice(1); }
+
+    let rps9State = null; // cached for score-edit reverts
+
+    function startRps9Round()  { socket.emit('start_rps9_round', { roomCode }); }
+    function cancelRps9Round() { socket.emit('cancel_rps9_round', { roomCode }); }
+    function nextRps9Round()   { socket.emit('next_rps9_round', { roomCode }); }
+    function resetRps9Scores() {
+      if (!confirm('Reset all scores to 0?')) return;
+      socket.emit('rps9_reset_scores', { roomCode });
+    }
+
+    socket.on('rps9_room_state', (r) => {
+      if (r.serverNow) clockOffsetMs = r.serverNow - Date.now();
+      rps9State = r;
+
+      document.getElementById('rps9PhaseLabel').textContent =
+        r.phase === 'waiting' ? 'Waiting to Start' : r.phase === 'picking' ? 'Picking' : 'Results';
+      document.getElementById('rps9RoundLabel').textContent = 'Round ' + r.roundNumber;
+
+      document.getElementById('rps9WaitingControls').style.display = r.phase === 'waiting' ? '' : 'none';
+      document.getElementById('rps9PickingView').style.display     = r.phase === 'picking' ? '' : 'none';
+      document.getElementById('rps9ResultsView').style.display     = r.phase === 'results' ? '' : 'none';
+
+      const startBtn = document.getElementById('rps9StartBtn');
+      const caption  = document.getElementById('rps9StartCaption');
+      const canStart = r.totalConnectedPlayers >= r.minPlayersNeeded;
+      startBtn.disabled   = !canStart;
+      caption.textContent = canStart ? '' : `Need at least ${r.minPlayersNeeded} players to start (currently ${r.totalConnectedPlayers}).`;
+
+      if (r.phase === 'picking') {
+        document.getElementById('rps9PickProgress').textContent =
+          `${r.pickedCount} of ${r.totalConnectedPlayers} players have picked`;
+      }
+
+      if (r.phase === 'results' && r.lastResults) {
+        renderRps9Results(r.lastResults, r.players);
+      }
+
+      renderRps9Scoreboard(r.players);
+    });
+
+    function renderRps9Results(lastResults, players) {
+      document.getElementById('rps9TiedBanner').style.display = lastResults.allTied ? '' : 'none';
+
+      const gains = Object.entries(lastResults.pointsGained || {})
+        .map(([id, n]) => `${players[id]?.name || '?'} +${n}`);
+      document.getElementById('rps9PointsSummary').textContent =
+        gains.length ? 'This round: ' + gains.join(', ') : 'This round: no points scored';
+
+      const el = document.getElementById('rps9MatchupList');
+      if (lastResults.matchups.length === 0) {
+        el.innerHTML = '<div class="empty-msg">No matchups this round</div>';
+        return;
+      }
+      el.innerHTML = lastResults.matchups.map(m => rps9MatchupRowHtml(m)).join('');
+    }
+
+    function rps9PickChip(item) {
+      const color = RPS9_COLORS[item] || '#666';
+      return `<span class="rps9-pick-chip" style="background:${color}22; color:${RPS9_DARK_TEXT.has(item) ? '#0a0c14' : color}">
+        <span class="rps9-pick-dot" style="background:${color}"></span>${rps9Label(item)}</span>`;
+    }
+
+    function rps9MatchupRowHtml(m) {
+      const players = `${esc(m.aName)} ${rps9PickChip(m.aPick)} vs ${esc(m.bName)} ${rps9PickChip(m.bPick)}`;
+      const flavor = m.result === 'tie' ? 'Tie — no points.' : esc(m.flavor);
+      return `<div class="rps9-matchup-row">
+        <span class="rps9-matchup-players">${players}</span>
+        <span class="rps9-matchup-flavor">${flavor}</span>
+      </div>`;
+    }
+
+    function renderRps9Scoreboard(players) {
+      const el = document.getElementById('rps9Scoreboard');
+      const entries = Object.entries(players || {});
+      if (entries.length === 0) {
+        el.innerHTML = '<div class="empty-msg">Waiting for players to join…</div>';
+        return;
+      }
+      entries.sort((a, b) => b[1].score - a[1].score);
+      el.innerHTML = entries.map(([id, p]) => `
+        <div class="score-row" data-id="${esc(id)}">
+          <span class="score-name" style="color:${safeColor(p.color)}">${esc(p.name)}</span>
+          <input
+            class="score-input"
+            type="number"
+            value="${p.score}"
+            title="Click to edit score"
+            onkeydown="if(event.key==='Enter') commitRps9Score('${esc(id)}', this)"
+            onblur="commitRps9Score('${esc(id)}', this)"
+          />
+          <span class="pts-label">pts</span>
+        </div>`).join('');
+    }
+
+    function commitRps9Score(socketId, inputEl) {
+      const raw      = inputEl.value.replace(/[^0-9\-]/g, '');
+      const newScore = parseInt(raw, 10);
+      if (isNaN(newScore)) {
+        if (rps9State?.players[socketId] !== undefined) inputEl.value = rps9State.players[socketId].score;
+        return;
+      }
+      socket.emit('host_update_score', { roomCode, socketId, newScore });
+      inputEl.blur();
+    }
+
+    // ── RPS9 wheel diagram — click a node to highlight what it beats ────────
+    function buildRps9Wheel(containerId) {
+      const R = 105, nodeR = 26, labelFontSize = 12, labelR = R + nodeR + 18;
+      // Size the viewBox from the longest label's estimated width so labels near the
+      // horizontal axis (e.g. "Supernova", "Spock") never clip past the edge.
+      const charW = labelFontSize * 0.62;
+      const maxLabelWidth = Math.max(...RPS9_ITEMS.map(i => rps9Label(i).length)) * charW;
+      const half = labelR + maxLabelWidth + 12;
+      const size = half * 2, cx = half, cy = half;
+      const positions = {};
+      RPS9_ITEMS.forEach((item, i) => {
+        const angle = (-90 + i * (360 / RPS9_ITEMS.length)) * Math.PI / 180;
+        positions[item] = {
+          x: cx + R * Math.cos(angle), y: cy + R * Math.sin(angle),
+          lx: cx + labelR * Math.cos(angle), ly: cy + labelR * Math.sin(angle),
+        };
+      });
+
+      const markers = RPS9_ITEMS.map(item => `
+        <marker id="${containerId}-arrow-${item}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="${RPS9_COLORS[item]}" />
+        </marker>`).join('');
+
+      let arrows = '';
+      RPS9_ITEMS.forEach(from => {
+        RPS9_BEATS[from].forEach(to => {
+          const a = positions[from], b = positions[to];
+          const dx = b.x - a.x, dy = b.y - a.y, dist = Math.hypot(dx, dy);
+          const ux = dx / dist, uy = dy / dist;
+          const x1 = a.x + ux * (nodeR + 2), y1 = a.y + uy * (nodeR + 2);
+          const x2 = b.x - ux * (nodeR + 8), y2 = b.y - uy * (nodeR + 8);
+          arrows += `<line class="rps9-arrow" data-from="${from}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${RPS9_COLORS[from]}" stroke-width="2" opacity="0.07" marker-end="url(#${containerId}-arrow-${from})" />`;
+        });
+      });
+
+      const nodes = RPS9_ITEMS.map(item => {
+        const p = positions[item];
+        const textColor = RPS9_DARK_TEXT.has(item) ? '#0a0c14' : '#fff';
+        const anchor = p.lx < cx - 6 ? 'end' : p.lx > cx + 6 ? 'start' : 'middle';
+        return `
+          <g class="rps9-node" data-item="${item}" onclick="rps9WheelClick('${containerId}','${item}')" style="cursor:pointer;">
+            <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nodeR}" fill="${RPS9_COLORS[item]}" stroke="#0a0c14" stroke-width="2" />
+            <text x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-size="9" font-weight="800" fill="${textColor}">${item.slice(0, 3).toUpperCase()}</text>
+            <text x="${p.lx.toFixed(1)}" y="${p.ly.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="central" font-size="12" font-weight="700" fill="var(--text)">${rps9Label(item)}</text>
+          </g>`;
+      }).join('');
+
+      document.getElementById(containerId).innerHTML = `
+        <svg viewBox="0 0 ${size} ${size}" style="width:100%; max-width:360px; display:block; margin:0 auto;">
+          <defs>${markers}</defs>
+          <g id="${containerId}-arrows">${arrows}</g>
+          <g>${nodes}</g>
+        </svg>
+        <div class="rps9-wheel-hint" id="${containerId}-hint">Tap an item to see what it beats</div>`;
+    }
+
+    function rps9WheelClick(containerId, item) {
+      const arrowsGroup = document.getElementById(containerId + '-arrows');
+      const selected = arrowsGroup.dataset.selected === item ? null : item;
+      arrowsGroup.dataset.selected = selected || '';
+      arrowsGroup.querySelectorAll('.rps9-arrow').forEach(line => {
+        const on = selected && line.dataset.from === selected;
+        line.style.opacity = on ? '1' : '0.07';
+        line.style.strokeWidth = on ? '3' : '2';
+      });
+      document.getElementById(containerId + '-hint').textContent = selected
+        ? `${rps9Label(selected)} beats: ${RPS9_BEATS[selected].map(rps9Label).join(', ')}`
+        : 'Tap an item to see what it beats';
+    }
+
+    buildRps9Wheel('rps9WheelHost');
 
     // ── Render scoreboard ─────────────────────────────────────────────────
     function renderScoreboard(players, buzzOrder, answeringPlayer) {
