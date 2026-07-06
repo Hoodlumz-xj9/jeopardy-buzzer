@@ -93,22 +93,26 @@ function scoreGuess(secret, guess) {
   return result;
 }
 
-// Wordle state is visibility-restricted per recipient (host sees every board;
-// each player sees only their own board plus anyone who has already solved),
-// so unlike broadcastState this sends a different payload to each socket.
-// io.to(oneSocketId) works because Socket.io auto-joins every socket to a
-// private room named after its own id.
+// Wordle state is visibility-restricted per recipient — the host sees every
+// board, but a player only ever sees their own board. Nothing about another
+// player (their guesses, their letters, or even whether they've solved it)
+// reaches a player's client until the host reveals, at which point everyone
+// gets the secret word plus a name-only "solved by" list — never anyone
+// else's actual guesses. Unlike broadcastState this sends a different
+// payload to each socket; io.to(oneSocketId) works because Socket.io
+// auto-joins every socket to a private room named after its own id.
 function broadcastWordleState(roomCode) {
   const room = rooms[roomCode];
   if (!room || room.mode !== 'wordle') return;
   const w = room.wordle;
 
-  const solvedBoards = {};
-  for (const id of Object.keys(w.solved)) {
-    if (w.solved[id] && room.players[id]) {
-      solvedBoards[id] = { name: room.players[id].name, color: room.players[id].color, guesses: w.guesses[id] || [] };
-    }
-  }
+  // Only populated once revealed — before that, no player ever learns
+  // anything about who else has (or hasn't) solved it.
+  const solvedList = w.revealed
+    ? Object.keys(w.solved)
+        .filter(id => w.solved[id] && room.players[id])
+        .map(id => ({ id, name: room.players[id].name, color: room.players[id].color, attempts: (w.guesses[id] || []).length }))
+    : [];
 
   if (room.hostSocketId) {
     const allBoards = {};
@@ -123,6 +127,7 @@ function broadcastWordleState(roomCode) {
     io.to(room.hostSocketId).emit('wordle_state', {
       pushed:     w.pushed,
       wordLength: w.word ? w.word.length : null,
+      revealed:   w.revealed,
       allBoards,
     });
   }
@@ -133,7 +138,9 @@ function broadcastWordleState(roomCode) {
       wordLength:  w.word ? w.word.length : null,
       myGuesses:   w.guesses[id] || [],
       mySolved:    !!w.solved[id],
-      solvedBoards,
+      revealed:    w.revealed,
+      word:        w.revealed ? w.word : null,
+      solvedList,
     });
   }
 }
@@ -160,7 +167,7 @@ app.post('/create-room', (req, res) => {
     timerEndsAt:     null,
   };
   if (rooms[code].mode === 'wordle') {
-    rooms[code].wordle = { word: null, pushed: false, guesses: {}, solved: {} };
+    rooms[code].wordle = { word: null, pushed: false, guesses: {}, solved: {}, revealed: false };
   }
   if (rooms[code].mode === 'imposter') {
     Object.assign(rooms[code], imposterGame.createImposterRoomState());
@@ -315,10 +322,11 @@ io.on('connection', (socket) => {
     const cleaned = String(word || '').trim().toUpperCase().replace(/[^A-Z]/g, '');
     if (!cleaned) return;
 
-    room.wordle.word    = cleaned;
-    room.wordle.pushed  = true;
-    room.wordle.guesses = {};
-    room.wordle.solved  = {};
+    room.wordle.word     = cleaned;
+    room.wordle.pushed   = true;
+    room.wordle.guesses  = {};
+    room.wordle.solved   = {};
+    room.wordle.revealed = false;
     broadcastWordleState(roomCode);
   });
 
@@ -328,10 +336,11 @@ io.on('connection', (socket) => {
     const room = rooms[roomCode];
     if (!room || room.mode !== 'wordle' || socket.id !== room.hostSocketId) return;
 
-    room.wordle.word    = null;
-    room.wordle.pushed  = false;
-    room.wordle.guesses = {};
-    room.wordle.solved  = {};
+    room.wordle.word     = null;
+    room.wordle.pushed   = false;
+    room.wordle.guesses  = {};
+    room.wordle.solved   = {};
+    room.wordle.revealed = false;
     broadcastWordleState(roomCode);
   });
 
@@ -341,8 +350,22 @@ io.on('connection', (socket) => {
     const room = rooms[roomCode];
     if (!room || room.mode !== 'wordle' || socket.id !== room.hostSocketId) return;
 
-    room.wordle.guesses = {};
-    room.wordle.solved  = {};
+    room.wordle.guesses  = {};
+    room.wordle.solved   = {};
+    room.wordle.revealed = false;
+    broadcastWordleState(roomCode);
+  });
+
+  // ── Host reveals the word — shows it (and who solved it) to every player,
+  // and locks further guessing. Nothing about other players is ever visible
+  // to players before this point.
+  socket.on('wordle_reveal', ({ roomCode }) => {
+    roomCode = roomCode?.toUpperCase();
+    const room = rooms[roomCode];
+    if (!room || room.mode !== 'wordle' || socket.id !== room.hostSocketId) return;
+    if (!room.wordle.pushed || room.wordle.revealed) return;
+
+    room.wordle.revealed = true;
     broadcastWordleState(roomCode);
   });
 
@@ -350,7 +373,7 @@ io.on('connection', (socket) => {
   socket.on('wordle_guess', ({ roomCode, guess }) => {
     roomCode = roomCode?.toUpperCase();
     const room = rooms[roomCode];
-    if (!room || room.mode !== 'wordle' || !room.wordle.pushed) return;
+    if (!room || room.mode !== 'wordle' || !room.wordle.pushed || room.wordle.revealed) return;
     if (!room.players[socket.id] || room.wordle.solved[socket.id]) return;
 
     const cleaned = String(guess || '').trim().toUpperCase().replace(/[^A-Z]/g, '');

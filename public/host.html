@@ -237,6 +237,9 @@
     .btn-push { background: var(--gold); color: #0a0c14; padding: 10px 20px; font-size: 0.95rem; }
     .btn-push:hover:not(:disabled) { filter: brightness(1.1); }
 
+    .btn-reveal { background: var(--gold); color: #0a0c14; padding: 10px 18px; }
+    .btn-reveal:hover:not(:disabled) { filter: brightness(1.1); }
+
     .wordle-active-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
     .wordle-len-confirm { font-size: 0.95rem; color: var(--gold); font-weight: 700; }
     .btn-unpush { background: var(--danger); color: #fff; padding: 10px 18px; }
@@ -429,6 +432,7 @@
         <div class="wordle-active-bar">
           <div class="wordle-len-confirm" id="wordleLenConfirm"></div>
           <div style="display:flex; gap:10px;">
+            <button class="btn-reveal" id="wordleRevealBtn" onclick="revealWord()">Reveal Word</button>
             <button class="btn-reset-players" onclick="resetWordlePlayers()">Reset All Players</button>
             <button class="btn-unpush" onclick="unpushWord()">Unpush</button>
           </div>
@@ -780,6 +784,9 @@
     function resetWordlePlayers() {
       socket.emit('wordle_reset_players', { roomCode });
     }
+    function revealWord() {
+      socket.emit('wordle_reveal', { roomCode });
+    }
 
     // Widens every player card's minimum grid width (and shrinks tile size only once
     // that's not enough) so a long word never overlaps a card's edge or another
@@ -810,10 +817,14 @@
       document.getElementById('wordlePrePush').style.display  = state.pushed ? 'none' : '';
       document.getElementById('wordlePostPush').style.display = state.pushed ? '' : 'none';
       if (state.pushed) {
-        document.getElementById('wordleLenConfirm').textContent = state.wordLength + '-letter word active';
+        document.getElementById('wordleLenConfirm').textContent =
+          state.wordLength + '-letter word active' + (state.revealed ? ' — revealed' : '');
       } else {
         document.getElementById('wordleInput').value = '';
       }
+      const revealBtn = document.getElementById('wordleRevealBtn');
+      revealBtn.disabled   = !!state.revealed;
+      revealBtn.textContent = state.revealed ? 'Revealed' : 'Reveal Word';
 
       const el = document.getElementById('hostWordleBoards');
       const entries = Object.entries(state.allBoards || {});

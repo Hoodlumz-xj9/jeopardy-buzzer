@@ -342,16 +342,14 @@
     .kb-key.present { background: var(--blue-lt); color: #fff; }
     .kb-key.absent  { background: #14172a; color: var(--muted); }
 
-    .wordle-player-card {
-      background: var(--surface);
-      border: 2px solid #3a4060;
-      border-radius: var(--radius);
-      padding: 14px;
-      width: 100%;
-      max-width: var(--card-width, 480px);
-      margin: 0 auto;
+    .reveal-word-display { font-size: 2.2rem; font-weight: 900; letter-spacing: 4px; color: var(--gold); text-align: center; margin: 6px 0 4px; }
+    .solved-by-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 16px; border-bottom: 1px solid #1a1e30; font-size: 0.95rem;
     }
-    .wordle-player-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 8px; }
+    .solved-by-row:last-child { border-bottom: none; }
+    .solved-by-attempts { color: var(--muted); font-size: 0.85rem; }
+    .wordle-locked-msg { text-align: center; color: var(--muted); font-size: 0.9rem; padding: 14px 0; }
 
     /* ── Sus (Imposter) mode ────────────────────────────────────── */
     .imposter-phase-label {
@@ -477,11 +475,18 @@
         <div id="myWordleGrid"></div>
       </div>
       <div class="wordle-keyboard" id="wordleKeyboard"></div>
+      <div class="wordle-locked-msg" id="wordleLockedMsg" style="display:none">The word has been revealed — no more guesses this round.</div>
     </div>
 
-    <div id="solvedSection" style="display:none">
-      <div class="buzz-order-title" style="border-radius:10px 10px 0 0;">Solved</div>
-      <div id="solvedList"></div>
+    <div id="wordleRevealSection" style="display:none">
+      <div class="wordle-card">
+        <div class="results-caption">The Word Was</div>
+        <div class="reveal-word-display" id="revealWordText"></div>
+      </div>
+      <div class="scoreboard">
+        <div class="scoreboard-title">Solved By</div>
+        <div id="solvedByList"><div class="empty-msg">Nobody solved it</div></div>
+      </div>
     </div>
   </div>
 
@@ -819,14 +824,18 @@
       document.getElementById('wordleActive').style.display  = state.pushed ? '' : 'none';
       if (!state.pushed) currentGuess = '';
 
+      document.getElementById('wordleKeyboard').style.display  = state.revealed ? 'none' : '';
+      document.getElementById('wordleLockedMsg').style.display = state.revealed ? '' : 'none';
+      document.getElementById('wordleRevealSection').style.display = state.revealed ? '' : 'none';
+
       renderMyGrid();
       renderKeyboard(state.myGuesses);
-      renderSolvedSection(state.solvedBoards);
+      if (state.revealed) renderRevealSection(state.word, state.solvedList);
     });
 
     function renderMyGrid() {
       if (!lastWordleState) return;
-      const { myGuesses, mySolved } = lastWordleState;
+      const { myGuesses, mySolved, revealed } = lastWordleState;
       const el = document.getElementById('myWordleGrid');
 
       const rows = myGuesses.map(g =>
@@ -835,7 +844,7 @@
         ).join('') + `</div>`
       );
 
-      if (!mySolved) {
+      if (!mySolved && !revealed) {
         const padded = currentGuess.padEnd(myWordLength || 0, ' ').split('');
         rows.push(`<div class="wordle-row">` + padded.map(ch =>
           `<div class="wordle-tile">${ch.trim() ? esc(ch) : ''}</div>`
@@ -858,31 +867,37 @@
       });
     }
 
-    function renderSolvedSection(solvedBoards) {
-      const entries = Object.entries(solvedBoards || {});
-      document.getElementById('solvedSection').style.display = entries.length ? '' : 'none';
-      document.getElementById('solvedList').innerHTML = entries.map(([id, board]) => `
-        <div class="wordle-player-card">
-          <div class="wordle-player-name"><span style="color:${safeColor(board.color)}">${esc(board.name)}</span>${id === socket.id ? ' <em style="color:var(--muted);font-size:0.8rem">(you)</em>' : ''}</div>
-          ${board.guesses.map(g => `<div class="wordle-row">` +
-            g.guess.split('').map((ch, i) => `<div class="wordle-tile ${g.result[i]}">${esc(ch)}</div>`).join('') +
-          `</div>`).join('')}
+    // Only ever called once the host has revealed — word and solvedList are both
+    // withheld by the server until then, so there's nothing to show prematurely.
+    function renderRevealSection(word, solvedList) {
+      document.getElementById('revealWordText').textContent = word || '';
+
+      const el = document.getElementById('solvedByList');
+      const entries = solvedList || [];
+      if (entries.length === 0) {
+        el.innerHTML = '<div class="empty-msg">Nobody solved it</div>';
+        return;
+      }
+      el.innerHTML = entries.map(p => `
+        <div class="solved-by-row">
+          <span><span style="color:${safeColor(p.color)}">${esc(p.name)}</span>${p.id === socket.id ? ' <em style="color:var(--muted);font-size:0.8rem">(you)</em>' : ''}</span>
+          <span class="solved-by-attempts">${p.attempts} ${p.attempts === 1 ? 'guess' : 'guesses'}</span>
         </div>`).join('');
     }
 
     function typeLetter(ch) {
-      if (lastWordleState?.mySolved) return;
+      if (lastWordleState?.mySolved || lastWordleState?.revealed) return;
       if (currentGuess.length >= (myWordLength || 0)) return;
       currentGuess += ch;
       renderMyGrid();
     }
     function backspace() {
-      if (lastWordleState?.mySolved) return;
+      if (lastWordleState?.mySolved || lastWordleState?.revealed) return;
       currentGuess = currentGuess.slice(0, -1);
       renderMyGrid();
     }
     function submitGuess() {
-      if (lastWordleState?.mySolved) return;
+      if (lastWordleState?.mySolved || lastWordleState?.revealed) return;
       if (currentGuess.length !== myWordLength) return;
       socket.emit('wordle_guess', { roomCode, guess: currentGuess });
       currentGuess = '';
