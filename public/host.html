@@ -314,6 +314,20 @@
     .settings-field input:focus, .settings-field select:focus { border-color: var(--blue-lt); }
     .settings-field input:disabled, .settings-field select:disabled { opacity: 0.5; cursor: not-allowed; }
 
+    .prompt-form label {
+      display: block; font-size: 0.72rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.5px; margin-bottom: 6px; margin-top: 14px;
+    }
+    .prompt-form label:first-of-type { margin-top: 0; }
+    .prompt-form textarea {
+      width: 100%; background: #0a0c14; border: 1px solid #3e3b70; border-radius: 6px;
+      color: var(--text); font-size: 0.95rem; padding: 10px 12px; outline: none;
+      font-family: inherit; resize: vertical; min-height: 60px;
+    }
+    .prompt-form textarea:focus { border-color: var(--blue-lt); }
+    .btn-submit-prompts { background: var(--gold); color: #0a0c14; width: 100%; padding: 12px; font-size: 1rem; margin-top: 16px; }
+    .btn-submit-prompts:hover:not(:disabled) { filter: brightness(1.1); }
+
     .prompt-breakdown-row {
       display: flex; justify-content: space-between; gap: 12px;
       padding: 8px 16px; border-bottom: 1px solid #1a1e30; font-size: 0.88rem;
@@ -452,6 +466,15 @@
     <!-- Prompt-setting phase -->
     <div class="section" id="imposterPromptSettingView" style="display:none">
       <div class="room-card">
+        <!-- host_fixed mode: the host is the prompt setter -->
+        <div id="hostPromptFormView" style="display:none" class="prompt-form">
+          <label>Main Prompt (everyone else sees this)</label>
+          <textarea id="hostMainPromptInput" maxlength="300"></textarea>
+          <label>Imposter Prompt (one random player sees this instead)</label>
+          <textarea id="hostImposterPromptInput" maxlength="300"></textarea>
+          <button class="btn-submit-prompts" onclick="submitHostImposterPrompts()">Submit Prompts</button>
+        </div>
+        <!-- rotating mode: some player is the prompt setter -->
         <div id="promptSettingStatus"></div>
         <div style="margin-top:12px;">
           <button class="btn-cancel" onclick="cancelImposterRound()">Cancel Round</button>
@@ -818,6 +841,10 @@
     // ── Sus (Imposter) mode ──────────────────────────────────────────────
     let imposterState       = null; // cached for score-edit reverts
     let imposterTimerInterval = null;
+    // Tracks whether the host's own prompt form was showing on the last render, so it's
+    // only cleared on the transition INTO a fresh prompt_setting phase — not on every
+    // re-render while the host is already mid-typing (e.g. a player joining elsewhere).
+    let hostWasInPromptSetting = false;
 
     function startImposterCountdown(endsAt, elId) {
       clearInterval(imposterTimerInterval);
@@ -838,6 +865,12 @@
 
     function startImposterRound()  { socket.emit('start_imposter_round', { roomCode }); }
     function cancelImposterRound() { socket.emit('cancel_round', { roomCode }); }
+    function submitHostImposterPrompts() {
+      const mainPrompt     = document.getElementById('hostMainPromptInput').value.trim();
+      const imposterPrompt = document.getElementById('hostImposterPromptInput').value.trim();
+      if (!mainPrompt || !imposterPrompt) return;
+      socket.emit('submit_prompts', { roomCode, mainPrompt, imposterPrompt });
+    }
     function skipToVoting()        { socket.emit('skip_to_voting', { roomCode }); }
     function nextImposterRound()   { socket.emit('next_round', { roomCode }); }
     function resetImposterScores() {
@@ -880,8 +913,21 @@
       caption.textContent = canStart ? '' : `Need at least ${r.minPlayersNeeded} players to start (currently ${r.totalConnectedPlayers}).`;
 
       if (r.phase === 'prompt_setting') {
-        document.getElementById('promptSettingStatus').textContent =
-          `Waiting for ${r.promptSetterName} to write this round's prompts…`;
+        const hostIsSetter = r.promptSetter === null; // host_fixed mode — no player is assigned, the host types the prompts
+        document.getElementById('hostPromptFormView').style.display = hostIsSetter ? '' : 'none';
+        document.getElementById('promptSettingStatus').style.display = hostIsSetter ? 'none' : '';
+        if (hostIsSetter) {
+          if (!hostWasInPromptSetting) {
+            document.getElementById('hostMainPromptInput').value = '';
+            document.getElementById('hostImposterPromptInput').value = '';
+          }
+        } else {
+          document.getElementById('promptSettingStatus').textContent =
+            `Waiting for ${r.promptSetterName} to write this round's prompts…`;
+        }
+        hostWasInPromptSetting = true;
+      } else {
+        hostWasInPromptSetting = false;
       }
 
       if (r.phase === 'discussing' && r.discussionEndsAt) {
