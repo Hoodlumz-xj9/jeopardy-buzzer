@@ -124,6 +124,13 @@ function broadcastImposterState(io, rooms, roomCode) {
   if (!room || room.mode !== 'imposter') return;
   const r = room.imposterRound;
   const eligible = liveEligiblePlayerIds(room);
+  // Before a round starts, eligiblePlayerIds is still empty (it's only snapshotted
+  // when a round begins), so eligible.length would always read 0 here — which would
+  // permanently fail the min-player check gating the Start Round button. Waiting
+  // phase needs the live connected-player count instead; every other phase still
+  // wants the eligible-for-this-round count (e.g. so a mid-round joiner doesn't
+  // inflate the "X of Y votes cast" denominator).
+  const totalConnectedPlayers = r.phase === 'waiting' ? Object.keys(room.players).length : eligible.length;
 
   io.to(roomCode).emit('imposter_room_state', {
     phase: r.phase === '_results_pending' ? 'voting' : r.phase,
@@ -132,7 +139,7 @@ function broadcastImposterState(io, rooms, roomCode) {
     discussionEndsAt: r.discussionEndsAt,
     votingEndsAt: r.votingEndsAt,
     votesCastCount: eligible.filter(id => r.votes[id]).length,
-    totalConnectedPlayers: eligible.length,
+    totalConnectedPlayers,
     eligiblePlayerIds: eligible, // who's actually part of this round — a mid-round joiner won't be in here
     players: room.players,
     settings: room.imposterSettings,
