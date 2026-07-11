@@ -327,6 +327,7 @@ function registerSocketHandlers(io, socket, rooms) {
     if (!eligible.includes(socket.id)) return;        // voter must be a live eligible player
     if (!eligible.includes(votedForSocketId)) return; // target must be a live eligible player
     if (votedForSocketId === socket.id) return;        // can't vote for self
+    if (r.votes[socket.id]) return;                    // vote already locked in — no changing it
 
     r.votes[socket.id] = votedForSocketId;
     broadcastImposterState(io, rooms, roomCode);

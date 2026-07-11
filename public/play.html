@@ -384,6 +384,12 @@
     }
     .vote-card:hover { border-color: var(--blue-lt); }
     .vote-card.voted-for { border-color: var(--gold); background: rgba(245,197,24,0.1); }
+    .vote-card.locked { cursor: not-allowed; }
+    .vote-card.locked:not(.voted-for) { opacity: 0.5; }
+    .vote-card.locked:hover { border-color: #3a4060; }
+    .vote-card.locked.voted-for:hover { border-color: var(--gold); }
+    .btn-submit-vote { background: var(--gold); color: #0a0c14; width: 100%; padding: 12px; font-size: 1rem; margin-top: 4px; }
+    .btn-submit-vote:hover:not(:disabled) { filter: brightness(1.1); }
     .vote-status { text-align: center; color: var(--muted); font-size: 0.9rem; }
 
     .results-caption { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; text-align: center; }
@@ -529,6 +535,7 @@
     <div id="imposterVoteView" style="display:none" class="vote-card-list">
       <div class="discuss-countdown" id="votingCountdownPlayer" style="text-align:center;"></div>
       <div id="voteCardsList" style="width:100%; display:flex; flex-direction:column; gap:10px;"></div>
+      <button class="btn-submit-vote" id="submitVoteBtn" onclick="submitVote()" disabled>Submit Vote</button>
       <div class="vote-status" id="voteStatusText"></div>
     </div>
 
@@ -923,7 +930,8 @@
 
     // ── Sus (Imposter) mode ──────────────────────────────────────────────
     let lastImposterState     = null;
-    let myVoteFor              = null; // client-tracked, cosmetic "vote cast" confirmation
+    let myVoteFor              = null; // currently selected candidate — changeable until submitted
+    let myVoteSubmitted        = false; // true once cast_vote has actually been sent — locks the selection
     let imposterTimerInterval = null;
 
     function startImposterCountdown(endsAt, elId) {
@@ -948,10 +956,17 @@
       socket.emit('submit_prompts', { roomCode, mainPrompt, imposterPrompt });
     }
 
-    function castVote(votedForSocketId) {
+    function selectVoteCandidate(votedForSocketId) {
+      if (myVoteSubmitted) return; // locked in — no changing it after submit
       myVoteFor = votedForSocketId;
-      socket.emit('cast_vote', { roomCode, votedForSocketId });
       if (lastImposterState) renderVoteCards(lastImposterState); // immediate feedback, don't wait for the round trip
+    }
+
+    function submitVote() {
+      if (myVoteSubmitted || !myVoteFor) return;
+      myVoteSubmitted = true;
+      socket.emit('cast_vote', { roomCode, votedForSocketId: myVoteFor });
+      if (lastImposterState) renderVoteCards(lastImposterState);
     }
 
     function renderVoteCards(r) {
@@ -962,11 +977,16 @@
       } else {
         el.innerHTML = candidates.map(id => {
           const p = r.players[id];
-          return `<div class="vote-card ${myVoteFor === id ? 'voted-for' : ''}" onclick="castVote('${esc(id)}')">${esc(p?.name || 'Unknown')}</div>`;
+          const cls = 'vote-card' + (myVoteFor === id ? ' voted-for' : '') + (myVoteSubmitted ? ' locked' : '');
+          return `<div class="${cls}" onclick="selectVoteCandidate('${esc(id)}')">${esc(p?.name || 'Unknown')}</div>`;
         }).join('');
       }
-      document.getElementById('voteStatusText').textContent =
-        myVoteFor ? 'Vote cast — waiting for others…' : 'Tap a player to vote';
+      const submitBtn = document.getElementById('submitVoteBtn');
+      submitBtn.disabled    = myVoteSubmitted || !myVoteFor;
+      submitBtn.textContent = myVoteSubmitted ? 'Vote Submitted' : 'Submit Vote';
+      document.getElementById('voteStatusText').textContent = myVoteSubmitted
+        ? 'Vote locked in — waiting for others…'
+        : (myVoteFor ? 'Tap Submit Vote to lock it in' : 'Tap a player to select, then submit');
     }
 
     const IMPOSTER_PHASE_LABELS = {
@@ -977,7 +997,7 @@
     socket.on('imposter_room_state', (r) => {
       if (r.serverNow) clockOffsetMs = r.serverNow - Date.now();
       lastImposterState = r;
-      if (r.phase !== 'voting') myVoteFor = null;
+      if (r.phase !== 'voting') { myVoteFor = null; myVoteSubmitted = false; }
 
       document.getElementById('imposterPhaseLabel').textContent = IMPOSTER_PHASE_LABELS[r.phase] || r.phase;
       document.getElementById('imposterRoundLabel').textContent = 'Round ' + r.roundNumber;
