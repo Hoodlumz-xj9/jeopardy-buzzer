@@ -8,6 +8,7 @@ const { Server } = require('socket.io');
 const path    = require('path');
 const imposterGame = require('./imposter-game');
 const rps9Game = require('./rps9-game');
+const diceGame = require('./dice-game');
 
 const app    = express();
 const server = http.createServer(app);
@@ -21,7 +22,7 @@ app.use(express.json());
 // Room shape:
 // {
 //   code, password, hostName,
-//   mode: 'buzzer' | 'wordle' | 'imposter', // set at creation, never changes
+//   mode: 'buzzer' | 'wordle' | 'imposter' | 'rps9' | 'dice', // set at creation, never changes
 //   hostSocketId: socketId | null, // the host's current socket — also used to authorize host-only actions
 //   players: { socketId: { name, score, color } },  // color is a "#RRGGBB" hex string
 //   buzzOrder: [socketId, ...],   // oldest first
@@ -159,7 +160,7 @@ app.post('/create-room', (req, res) => {
     code,
     password,
     hostName,
-    mode:            mode === 'wordle' ? 'wordle' : mode === 'imposter' ? 'imposter' : mode === 'rps9' ? 'rps9' : 'buzzer',
+    mode:            mode === 'wordle' ? 'wordle' : mode === 'imposter' ? 'imposter' : mode === 'rps9' ? 'rps9' : mode === 'dice' ? 'dice' : 'buzzer',
     hostSocketId:    null,
     players:         {},
     buzzOrder:       [],
@@ -174,6 +175,9 @@ app.post('/create-room', (req, res) => {
   }
   if (rooms[code].mode === 'rps9') {
     Object.assign(rooms[code], rps9Game.createRps9RoomState());
+  }
+  if (rooms[code].mode === 'dice') {
+    Object.assign(rooms[code], diceGame.createDiceRoomState());
   }
 
   console.log(`Room created: ${code} by ${hostName} (${rooms[code].mode} mode)`);
@@ -232,6 +236,7 @@ io.on('connection', (socket) => {
     if (room.mode === 'wordle')   broadcastWordleState(roomCode);
     if (room.mode === 'imposter') imposterGame.broadcastImposterState(io, rooms, roomCode);
     if (room.mode === 'rps9')     rps9Game.broadcastRps9State(io, rooms, roomCode);
+    if (room.mode === 'dice')     diceGame.broadcastDiceState(io, rooms, roomCode);
   });
 
   // ── Host socket identifies itself (no password re-check — room was already created) ──
@@ -248,11 +253,13 @@ io.on('connection', (socket) => {
     if (room.mode === 'wordle')   broadcastWordleState(roomCode);
     if (room.mode === 'imposter') imposterGame.broadcastImposterState(io, rooms, roomCode);
     if (room.mode === 'rps9')     rps9Game.broadcastRps9State(io, rooms, roomCode);
+    if (room.mode === 'dice')     diceGame.broadcastDiceState(io, rooms, roomCode);
   });
 
   // ── Sus (Imposter) mode — all handlers live in imposter-game.js ─────────
   imposterGame.registerSocketHandlers(io, socket, rooms);
   rps9Game.registerSocketHandlers(io, socket, rooms);
+  diceGame.registerSocketHandlers(io, socket, rooms);
 
   // ── Player buzzes ────────────────────────────────────────────────────────
   socket.on('buzz', ({ roomCode }) => {

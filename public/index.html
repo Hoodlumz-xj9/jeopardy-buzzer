@@ -99,9 +99,10 @@
     #modeWordleBtn { background: #17a398; }
     #modeSusBtn    { background: #9b59b6; }
     #modeRps9Btn   { background: #d6408f; }
+    #modeDiceBtn   { background: #cc6b2c; }
     /* Selected state keeps the mode's own color (rather than swapping to gold, now
        reserved for Create) and adds a bright ring so the active choice still pops. */
-    #modeBuzzerBtn.selected, #modeWordleBtn.selected, #modeSusBtn.selected, #modeRps9Btn.selected {
+    #modeBuzzerBtn.selected, #modeWordleBtn.selected, #modeSusBtn.selected, #modeRps9Btn.selected, #modeDiceBtn.selected {
       filter: brightness(1.3);
       box-shadow: 0 0 0 2px #fff;
     }
@@ -238,6 +239,7 @@
         <!-- internal mode value is 'imposter'; user-facing label is 'sus' per product decision -->
         <button type="button" class="btn-secondary" id="modeSusBtn" onclick="selectMode('imposter')">Sus</button>
         <button type="button" class="btn-secondary" id="modeRps9Btn" onclick="selectMode('rps9')">RPS</button>
+        <button type="button" class="btn-secondary" id="modeDiceBtn" onclick="selectMode('dice')">Dice</button>
       </div>
 
       <div id="createError" class="error-banner"></div>
@@ -298,6 +300,7 @@
       document.getElementById('modeWordleBtn').classList.toggle('selected', mode === 'wordle');
       document.getElementById('modeSusBtn').classList.toggle('selected', mode === 'imposter');
       document.getElementById('modeRps9Btn').classList.toggle('selected', mode === 'rps9');
+      document.getElementById('modeDiceBtn').classList.toggle('selected', mode === 'dice');
     }
 
     // ── Name color (Join modal) ────────────────────────────────────────────

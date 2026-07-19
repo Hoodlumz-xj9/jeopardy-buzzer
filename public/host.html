@@ -371,6 +371,49 @@
     }
     .rps9-pick-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .rps9-wheel-hint { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 8px; }
+
+    /* ── Dice mode ──────────────────────────────────────────────── */
+    /* Fixed column count, not auto-fill: this panel is an unstyled flex-item div with
+       no explicit width (same as every other mode panel), so it sizes via shrink-to-fit.
+       auto-fill can't resolve a track count against an indefinite container width and
+       collapses to a single column — repeat(N, 1fr) has a static count so it sizes fine,
+       same fix already used for the RPS9 picker grid on the player page. */
+    .dice-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+    }
+    .dice-card {
+      background: #0a0c14; border: 1px solid #3e3b70; border-radius: 8px;
+      padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 8px;
+    }
+    .dice-stepper { display: flex; align-items: center; gap: 10px; }
+    .dice-step-btn {
+      width: 30px; height: 30px; border-radius: 50%; background: var(--blue); color: #fff;
+      font-size: 1.1rem; font-weight: 800; padding: 0; display: flex; align-items: center; justify-content: center;
+    }
+    .dice-step-btn:hover:not(:disabled) { filter: brightness(1.2); }
+    .dice-count { min-width: 22px; text-align: center; font-size: 1.05rem; font-weight: 800; }
+    .dice-roll-btn { background: var(--gold); color: #0a0c14; width: 100%; padding: 14px; font-size: 1.05rem; }
+    .dice-roll-btn:hover:not(:disabled) { filter: brightness(1.1); }
+
+    .dice-visibility-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      margin-top: 14px; padding-top: 14px; border-top: 1px solid #1a1e30;
+    }
+    .dice-toggle { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; cursor: pointer; }
+    .dice-toggle input { width: 18px; height: 18px; cursor: pointer; }
+
+    .dice-log { max-height: 420px; overflow-y: auto; }
+    .dice-log-entry { padding: 10px 16px; border-bottom: 1px solid #1a1e30; font-size: 0.9rem; }
+    .dice-log-entry:last-child { border-bottom: none; }
+    .dice-log-entry.dice-log-hidden { color: var(--muted); font-style: italic; }
+    .dice-log-name { font-weight: 700; margin-bottom: 3px; }
+    .dice-secret-tag {
+      font-size: 0.68rem; color: var(--muted); font-weight: 400; text-transform: uppercase;
+      letter-spacing: 0.5px; margin-left: 4px;
+    }
+    .dice-log-breakdown { color: var(--muted); font-size: 0.85rem; }
+    .dice-log-sep { margin: 0 6px; opacity: 0.5; }
+    .dice-log-total { color: var(--gold); font-weight: 800; margin-top: 3px; }
   </style>
 </head>
 <body>
@@ -638,6 +681,31 @@
     </div>
   </div>
 
+  <!-- Dice panel -->
+  <div id="dicePanel" style="display:none">
+    <div class="section">
+      <div class="section-title">Roll Dice</div>
+      <div class="room-card">
+        <div class="dice-grid" id="diceGrid"></div>
+        <button class="dice-roll-btn" id="diceRollBtn" onclick="rollDice()" disabled>Roll</button>
+
+        <div class="dice-visibility-row">
+          <label class="dice-toggle">
+            <input type="checkbox" id="hostVisibilityToggle" onchange="toggleHostVisibility(this.checked)" />
+            <span>Hide my rolls from players</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Roll Log</div>
+      <div class="scoreboard dice-log" id="diceLog">
+        <div class="empty-msg">No rolls yet — set your dice and hit Roll</div>
+      </div>
+    </div>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script>
     // ── Bootstrap from sessionStorage (set by index.html) ────────────────
@@ -759,8 +827,9 @@
       document.getElementById('wordlePanel').style.display   = mode === 'wordle'   ? '' : 'none';
       document.getElementById('imposterPanel').style.display = mode === 'imposter' ? '' : 'none';
       document.getElementById('rps9Panel').style.display     = mode === 'rps9'     ? '' : 'none';
+      document.getElementById('dicePanel').style.display     = mode === 'dice'     ? '' : 'none';
       document.getElementById('logoText').textContent =
-        mode === 'wordle' ? 'HOODLUMZLE!' : mode === 'imposter' ? 'SUS!' : mode === 'rps9' ? 'RPS!' : 'JEOPARDY!';
+        mode === 'wordle' ? 'HOODLUMZLE!' : mode === 'imposter' ? 'SUS!' : mode === 'rps9' ? 'RPS!' : mode === 'dice' ? 'DICE!' : 'JEOPARDY!';
 
       renderScoreboard(players, buzzOrder, answeringPlayer);
       renderBuzzOrder(buzzOrder, players);
@@ -1237,6 +1306,118 @@
     }
 
     buildRps9Wheel('rps9WheelHost');
+
+    // ── Dice mode ──────────────────────────────────────────────────────────
+    // Static rule data mirrored client-side — same duplication pattern as RPS9 above.
+    // Dice pools are chosen client-side only; the server is authoritative for the actual rolls.
+    const DICE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
+    const DICE_COLORS = {
+      d4: '#e74c3c', d6: '#2563c9', d8: '#27ae60', d10: '#e67e22',
+      d12: '#9b59b6', d20: '#f5c518', d100: '#17a398',
+    };
+    const DICE_SHAPE_POINTS = {
+      d4:  '30,4 56,52 4,52',
+      d6:  '8,8 52,8 52,52 8,52',
+      d8:  '30,2 56,30 30,58 4,30',
+      d10: '30,2 52,22 44,58 16,58 8,22',
+      d12: '30,2 54,18 46,50 14,50 6,18',
+      d20: '30,2 54,16 54,44 30,58 6,44 6,16',
+    };
+    const DICE_DARK_TEXT = new Set(['d20']); // gold face needs dark text for contrast
+
+    function diceIconSvg(type) {
+      const color = DICE_COLORS[type];
+      const shape = type === 'd100'
+        ? `<circle cx="30" cy="30" r="28" fill="${color}" stroke="#0a0c14" stroke-width="2" />`
+        : `<polygon points="${DICE_SHAPE_POINTS[type]}" fill="${color}" stroke="#0a0c14" stroke-width="2" stroke-linejoin="round" />`;
+      const textColor = DICE_DARK_TEXT.has(type) ? '#0a0c14' : '#fff';
+      return `<svg viewBox="0 0 60 60" width="48" height="48">${shape}
+        <text x="30" y="33" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="800" fill="${textColor}">${type}</text>
+      </svg>`;
+    }
+
+    let diceCounts = Object.fromEntries(DICE_TYPES.map(t => [t, 0]));
+
+    function renderDiceGrid() {
+      const el = document.getElementById('diceGrid');
+      el.innerHTML = DICE_TYPES.map(type => `
+        <div class="dice-card">
+          ${diceIconSvg(type)}
+          <div class="dice-stepper">
+            <button type="button" class="dice-step-btn" onclick="adjustDiceCount('${type}', -1)">&minus;</button>
+            <span class="dice-count" id="diceCount-${type}">${diceCounts[type]}</span>
+            <button type="button" class="dice-step-btn" onclick="adjustDiceCount('${type}', 1)">+</button>
+          </div>
+        </div>`).join('');
+      updateDiceRollButton();
+    }
+
+    function adjustDiceCount(type, delta) {
+      diceCounts[type] = Math.max(0, Math.min(20, diceCounts[type] + delta));
+      document.getElementById('diceCount-' + type).textContent = diceCounts[type];
+      updateDiceRollButton();
+    }
+
+    function updateDiceRollButton() {
+      const total = Object.values(diceCounts).reduce((a, b) => a + b, 0);
+      const btn = document.getElementById('diceRollBtn');
+      btn.disabled = total === 0;
+      btn.textContent = total === 0 ? 'Roll' : `Roll ${total} ${total === 1 ? 'Die' : 'Dice'}`;
+    }
+
+    function rollDice() {
+      const total = Object.values(diceCounts).reduce((a, b) => a + b, 0);
+      if (total === 0) return;
+      socket.emit('dice_roll', { roomCode, dice: diceCounts });
+    }
+
+    function toggleHostVisibility(hideRolls) {
+      socket.emit('dice_set_host_visibility', { roomCode, visible: !hideRolls });
+    }
+
+    renderDiceGrid();
+
+    socket.on('dice_state', (state) => {
+      const toggle = document.getElementById('hostVisibilityToggle');
+      if (document.activeElement !== toggle) toggle.checked = !state.hostRollsVisible;
+      renderDiceLog(state.log);
+    });
+
+    function renderDiceLog(log) {
+      const el = document.getElementById('diceLog');
+      if (!log || log.length === 0) {
+        el.innerHTML = '<div class="empty-msg">No rolls yet — set your dice and hit Roll</div>';
+        return;
+      }
+      el.innerHTML = log.slice().reverse().map(entry => diceLogEntryHtml(entry)).join('');
+    }
+
+    // Handles both the host's own full-detail entries (including their own hidden
+    // rolls, which still carry dice/results/total here) and a player's redacted
+    // stub entries (hidden with no results) — same renderer, different payload shape.
+    function diceLogEntryHtml(entry) {
+      const hostTag = entry.isHost ? ' <span class="host-tag" style="font-size:0.65rem;padding:2px 8px;">Host</span>' : '';
+      const nameColor = safeColor(entry.color) !== 'inherit' ? entry.color : 'var(--gold)';
+      const nameHtml = `<span style="color:${nameColor}">${esc(entry.name)}</span>${hostTag}`;
+
+      if (entry.hidden && !entry.results) {
+        return `<div class="dice-log-entry dice-log-hidden">
+          <div class="dice-log-name">${nameHtml}</div>
+          <div class="dice-log-breakdown">rolled privately &#128274;</div>
+        </div>`;
+      }
+
+      const breakdown = DICE_TYPES.filter(t => entry.dice[t]).map(t =>
+        `<span class="dice-log-group"><b>${entry.dice[t]}${t}</b> ${entry.results[t].join(', ')}</span>`
+      ).join('<span class="dice-log-sep">&middot;</span>');
+      const secretTag = entry.hidden ? ' <span class="dice-secret-tag">hidden from players</span>' : '';
+
+      return `<div class="dice-log-entry">
+        <div class="dice-log-name">${nameHtml}${secretTag}</div>
+        <div class="dice-log-breakdown">${breakdown}</div>
+        <div class="dice-log-total">Total ${entry.total}</div>
+      </div>`;
+    }
 
     // ── Render scoreboard ─────────────────────────────────────────────────
     function renderScoreboard(players, buzzOrder, answeringPlayer) {
